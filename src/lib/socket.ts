@@ -153,7 +153,8 @@ export const initializeSocket = (appUserId: string, email?: string): Socket => {
       
       // Handle specific error cases
       if (err.message.includes('unauthorized')) {
-        disconnectSocket();
+        console.log('🔒 Authentication required');
+        eventHandlers['mail:error']?.('Authentication required');
         return;
       }
 
@@ -199,8 +200,15 @@ export const initializeSocket = (appUserId: string, email?: string): Socket => {
 
     socket.on('mail:error', (error: string) => {
       console.error('📭 Mail error:', error);
-      if (error.includes('Token not found') || error.includes('Token expired')) {
-        disconnectSocket();
+      if (error.includes('Token not found')) {
+        console.log('🔑 Token not found, waiting for authentication...');
+        eventHandlers['mail:error']?.(error);
+        return;
+      }
+      if (error.includes('Token expired')) {
+        console.log('⏰ Token expired, waiting for refresh...');
+        eventHandlers['mail:error']?.(error);
+        return;
       }
       eventHandlers['mail:error']?.(error);
     });
