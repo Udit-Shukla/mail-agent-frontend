@@ -52,6 +52,21 @@ type SocketEventHandlers = {
   'mail:promptDateRange': () => void;
   'mail:new': (message: MailMessage) => void;
   'mail:syncComplete': () => void;
+  'mail:enrichmentStatus': (data: { 
+    messageId: string; 
+    status: 'queued' | 'analyzing' | 'completed' | 'error';
+    message: string;
+    aiMeta?: {
+      summary: string;
+      category: string;
+      priority: 'urgent' | 'high' | 'medium' | 'low';
+      sentiment: 'positive' | 'negative' | 'neutral';
+      actionItems: string[];
+      enrichedAt: string;
+      version: string;
+      error?: string;
+    };
+  }) => void;
 };
 
 let socket: Socket | null = null;
@@ -199,6 +214,25 @@ export const initializeSocket = (appUserId: string, email?: string): Socket => {
     socket.on('mail:syncComplete', () => {
       console.log('📅 Sync complete');
       eventHandlers['mail:syncComplete']?.();
+    });
+
+    socket.on('mail:enrichmentStatus', (data: { 
+      messageId: string; 
+      status: 'queued' | 'analyzing' | 'completed' | 'error';
+      message: string;
+      aiMeta?: {
+        summary: string;
+        category: string;
+        priority: 'urgent' | 'high' | 'medium' | 'low';
+        sentiment: 'positive' | 'negative' | 'neutral';
+        actionItems: string[];
+        enrichedAt: string;
+        version: string;
+        error?: string;
+      };
+    }) => {
+      console.log('📄 Enrichment status:', data);
+      eventHandlers['mail:enrichmentStatus']?.(data);
     });
   }
 

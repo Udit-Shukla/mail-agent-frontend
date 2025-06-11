@@ -21,7 +21,6 @@ export function useSocket() {
 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  // const pathname = usePathname();
   const socketRef = useRef<ReturnType<typeof initializeSocket> | null>(null);
   const [isConnected, setIsConnected] = React.useState(false);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -36,7 +35,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Only initialize if not already initialized
+    // Initialize socket if not already initialized
     if (!isInitializedRef.current) {
       console.log('🔌 Initializing socket connection...');
       socketRef.current = initializeSocket(appUserId, activeEmail);
@@ -55,6 +54,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         console.log('❌ Socket disconnected:', reason);
         setIsConnected(false);
 
+        // Only attempt to reconnect if it wasn't a client-side disconnect
         if (reason !== 'io client disconnect') {
           reconnectTimeoutRef.current = setTimeout(() => {
             if (socketRef.current && !socketRef.current.connected) {
@@ -76,15 +76,20 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        toast.error('Connection error. Attempting to reconnect...');
+        // Only show error toast for non-unauthorized errors
+        if (!error.message.includes('unauthorized')) {
+          toast.error('Connection error. Attempting to reconnect...');
+        }
       });
     }
 
-    // Cleanup on unmount
+    // Cleanup function
     return () => {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
+      // Don't disconnect the socket on component unmount
+      // This allows the connection to persist across page navigation
     };
   }, [router]);
 

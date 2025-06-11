@@ -152,14 +152,35 @@ export function EnrichedEmailList() {
         prev.map(email => {
           if (email.id === data.messageId) {
             if (data.status === 'completed' && data.aiMeta) {
-              return { ...email, aiMeta: data.aiMeta };
+              // Only include fields that exist in the analysis
+              const updatedAiMeta = {
+                summary: data.aiMeta.summary,
+                category: data.aiMeta.category,
+                ...(data.aiMeta.priority && { priority: data.aiMeta.priority }),
+                ...(data.aiMeta.sentiment && { sentiment: data.aiMeta.sentiment }),
+                actionItems: data.aiMeta.actionItems || [],
+                enrichedAt: data.aiMeta.enrichedAt,
+                version: data.aiMeta.version || '1.0'
+              };
+              return { ...email, aiMeta: updatedAiMeta };
             } else if (data.status === 'error') {
               return {
                 ...email,
                 aiMeta: {
                   ...email.aiMeta,
                   error: data.message,
-                  summary: 'Enrichment failed'
+                  summary: 'Enrichment failed',
+                  version: email.aiMeta?.version || '1.0'
+                }
+              };
+            } else if (data.status === 'analyzing') {
+              return {
+                ...email,
+                aiMeta: {
+                  ...email.aiMeta,
+                  summary: 'Analyzing...',
+                  error: undefined,
+                  version: email.aiMeta?.version || '1.0'
                 }
               };
             }
@@ -172,14 +193,35 @@ export function EnrichedEmailList() {
       setSelectedEmail(prev => {
         if (prev?.id === data.messageId) {
           if (data.status === 'completed' && data.aiMeta) {
-            return { ...prev, aiMeta: data.aiMeta };
+            // Only include fields that exist in the analysis
+            const updatedAiMeta = {
+              summary: data.aiMeta.summary,
+              category: data.aiMeta.category,
+              ...(data.aiMeta.priority && { priority: data.aiMeta.priority }),
+              ...(data.aiMeta.sentiment && { sentiment: data.aiMeta.sentiment }),
+              actionItems: data.aiMeta.actionItems || [],
+              enrichedAt: data.aiMeta.enrichedAt,
+              version: data.aiMeta.version || '1.0'
+            };
+            return { ...prev, aiMeta: updatedAiMeta };
           } else if (data.status === 'error') {
             return {
               ...prev,
               aiMeta: {
                 ...prev.aiMeta,
                 error: data.message,
-                summary: 'Enrichment failed'
+                summary: 'Enrichment failed',
+                version: prev.aiMeta?.version || '1.0'
+              }
+            };
+          } else if (data.status === 'analyzing') {
+            return {
+              ...prev,
+              aiMeta: {
+                ...prev.aiMeta,
+                summary: 'Analyzing...',
+                error: undefined,
+                version: prev.aiMeta?.version || '1.0'
               }
             };
           }
@@ -295,7 +337,7 @@ export function EnrichedEmailList() {
     if (email.aiMeta?.error) {
       return { icon: <AlertCircle className="h-3 w-3 text-destructive" />, text: 'Enrichment failed' };
     }
-    if (email.aiMeta?.enrichedAt) {
+    if (email.aiMeta?.summary && email.aiMeta.summary !== 'Analyzing...' && email.aiMeta.enrichedAt) {
       return { icon: <Sparkles className="h-3 w-3 text-primary" />, text: email.aiMeta.summary };
     }
     return { icon: <Clock className="h-3 w-3 text-muted-foreground" />, text: email.preview };
