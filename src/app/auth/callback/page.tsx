@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 
@@ -13,7 +13,7 @@ interface Account {
   provider: 'outlook' | 'gmail';
 }
 
-export default function AuthCallbackPage() {
+function AuthCallbackContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -101,5 +101,20 @@ export default function AuthCallbackPage() {
         <p className="text-muted-foreground">Please wait while we connect your account.</p>
       </div>
     </div>
+  )
+}
+
+export default function AuthCallbackPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-semibold mb-4">Loading...</h2>
+          <p className="text-muted-foreground">Please wait while we prepare the authentication page.</p>
+        </div>
+      </div>
+    }>
+      <AuthCallbackContent />
+    </Suspense>
   )
 } 

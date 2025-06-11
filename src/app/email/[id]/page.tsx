@@ -48,7 +48,7 @@ export default function EmailDetailsPage() {
       const localTime = new Date(email.timestamp).toLocaleString()
       setFormattedTime(localTime)
     }
-  }, [email?.timestamp])
+  }, [email?.timestamp, email?.id])
 
   useEffect(() => {
     let mounted = true

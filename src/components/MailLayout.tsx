@@ -1,5 +1,5 @@
 'use client'
-import React from 'react';
+import React, { useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
@@ -27,7 +27,7 @@ export function MailLayout({ children }: MailLayoutProps) {
   const [userEmail, setUserEmail] = React.useState<string>('');
 
   // Fetch linked accounts
-  const fetchLinkedAccounts = async (setDefault = true) => {
+  const fetchLinkedAccounts = useCallback(async (setDefault = true) => {
     try {
       const appUserId = localStorage.getItem('appUserId');
       if (!appUserId) {
@@ -48,7 +48,7 @@ export function MailLayout({ children }: MailLayoutProps) {
     } catch (error) {
       console.error('Failed to fetch accounts:', error);
     }
-  };
+  }, [router]);
 
   // Handle account switching
   const handleAccountSwitch = (account: Account) => {
@@ -124,7 +124,7 @@ export function MailLayout({ children }: MailLayoutProps) {
     const email = localStorage.getItem('userEmail');
     if (email) setUserEmail(email);
     fetchLinkedAccounts();
-  }, []);
+  }, [fetchLinkedAccounts]);
 
   return (
     <div className="flex h-screen">

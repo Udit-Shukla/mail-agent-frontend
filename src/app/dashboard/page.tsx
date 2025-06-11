@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
@@ -66,7 +66,7 @@ export default function DashboardPage() {
   const [syncEndDate, setSyncEndDate] = useState<Date>(new Date())
   const [isSyncing, setIsSyncing] = useState(false)
 
-  const fetchLinkedAccounts = async (setDefault = true) => {
+  const fetchLinkedAccounts = useCallback(async (setDefault = true) => {
     try {
       const appUserId = localStorage.getItem('appUserId')
       if (!appUserId) {
@@ -104,10 +104,10 @@ export default function DashboardPage() {
       toast.error('Failed to load accounts')
       setIsLoading(false)
     }
-  }
+  }, [router])
 
   // Add a function to refresh current folder data
-  const refreshCurrentFolder = () => {
+  const refreshCurrentFolder = useCallback(() => {
     if (!activeAccount || !currentFolder) return;
 
     const appUserId = localStorage.getItem('appUserId');
@@ -125,7 +125,7 @@ export default function DashboardPage() {
     if (appUserId && activeAccount) {
       initializeSocket(appUserId, activeAccount.email);
     }
-  };
+  }, [activeAccount, currentFolder]);
 
   // Effect for socket initialization
   useEffect(() => {
@@ -303,22 +303,21 @@ export default function DashboardPage() {
       };
   
       initSocket();
-      fetchLinkedAccounts(false);
-  
-      return () => {
-        console.log('[Socket] Cleaning up event handlers...');
-        socketInitialized.current = false;
-        setSocketEventHandler('mail:folders', () => {});
-        setSocketEventHandler('mail:folderMessages', () => {});
-        setSocketEventHandler('mail:importantMarked', () => {});
-        setSocketEventHandler('mail:markedRead', () => {});
-        setSocketEventHandler('mail:error', () => {});
-        setSocketEventHandler('mail:promptDateRange', () => {});
-        setSocketEventHandler('mail:new', () => {});
-        setSocketEventHandler('mail:syncComplete', () => {});
-      };
     }
-  }, [activeAccount]);
+
+    return () => {
+      disconnectSocket();
+    };
+  }, [activeAccount, currentFolder, router, messages, fetchLinkedAccounts]);
+
+  useEffect(() => {
+    if (!activeAccount || !currentFolder) return;
+    refreshCurrentFolder();
+  }, [activeAccount, currentFolder, refreshCurrentFolder]);
+
+  useEffect(() => {
+    fetchLinkedAccounts();
+  }, [fetchLinkedAccounts]);
 
   const handleSyncRangeSubmit = () => {
     const appUserId = localStorage.getItem('appUserId')
