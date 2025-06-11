@@ -105,7 +105,7 @@ export const initializeSocket = (appUserId: string, email?: string): Socket => {
   if (!socket) {
     socket = io(serverUrl, {
       path: '/socket.io',
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
@@ -116,7 +116,9 @@ export const initializeSocket = (appUserId: string, email?: string): Socket => {
       forceNew: true,
       autoConnect: true,
       upgrade: true,
-      rememberUpgrade: true
+      rememberUpgrade: true,
+      secure: true,
+      rejectUnauthorized: false
     });
 
     socket.on('connect', () => {
