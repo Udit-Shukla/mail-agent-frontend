@@ -24,7 +24,8 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   const socketRef = useRef<ReturnType<typeof initializeSocket> | null>(null);
   const [isConnected, setIsConnected] = React.useState(false);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const isInitializedRef = useRef(false);
+  const retryCountRef = useRef(0);
+  const maxRetries = 3;
 
   useEffect(() => {
     const appUserId = localStorage.getItem('appUserId');
@@ -35,16 +36,14 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Initialize socket if not already initialized
-    if (!isInitializedRef.current) {
+    const initSocket = () => {
       console.log('🔌 Initializing socket connection...');
       socketRef.current = initializeSocket(appUserId, activeEmail);
-      isInitializedRef.current = true;
 
-      // Handle connection events
       socketRef.current.on('connect', () => {
         console.log('✅ Socket connected');
         setIsConnected(true);
+        retryCountRef.current = 0;
         if (reconnectTimeoutRef.current) {
           clearTimeout(reconnectTimeoutRef.current);
         }
@@ -76,20 +75,29 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        // Only show error toast for non-unauthorized errors
-        if (!error.message.includes('unauthorized')) {
-          toast.error('Connection error. Attempting to reconnect...');
+        retryCountRef.current++;
+        if (retryCountRef.current >= maxRetries) {
+          toast.error('Unable to connect to mail server. Please refresh the page.');
+          return;
         }
+
+        const retryDelay = Math.min(1000 * Math.pow(2, retryCountRef.current), 10000);
+        reconnectTimeoutRef.current = setTimeout(() => {
+          if (socketRef.current && !socketRef.current.connected) {
+            console.log('🔄 Attempting to reconnect after error...');
+            socketRef.current.connect();
+          }
+        }, retryDelay);
       });
-    }
+    };
+
+    initSocket();
 
     // Cleanup function
     return () => {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
-      // Don't disconnect the socket on component unmount
-      // This allows the connection to persist across page navigation
     };
   }, [router]);
 

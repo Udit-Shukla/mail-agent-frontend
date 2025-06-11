@@ -59,7 +59,7 @@ export default function DashboardPage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [showSetupWizard, setShowSetupWizard] = useState(false)
   const currentFolderRef = useRef<string | null>(null)
-  const socketInitialized = useRef(false)
+  // const socketInitialized = useRef(false)
   const [userEmail, setUserEmail] = useState<string>('')
   const [showDateModal, setShowDateModal] = useState(false)
   const [syncStartDate, setSyncStartDate] = useState<Date | null>(null)
@@ -137,177 +137,134 @@ export default function DashboardPage() {
       return;
     }
   
-    if (!socketInitialized.current) {
-      console.log('[Socket] Initializing socket...');
-      socketInitialized.current = true;
-  
-      let retryCount = 0;
-      const maxRetries = 3;
-  
-      const initSocket = () => {
-        const socket = initializeSocket(appUserId, activeAccount.email);
+    // Set up sync event handlers
+    setSocketEventHandler('mail:promptDateRange', () => {
+      setShowDateModal(true);
+    });
+
+    setSocketEventHandler('mail:new', (message) => {
+      // If message belongs to current folder, add it to the list
+      if (message.folder === currentFolder) {
+        setMessages(prev => [{ ...message, flagged: false }, ...prev]);
+      }
+      // Update folder unread count
+      setFolders(prev => prev.map(folder => 
+        folder.id === message.folder 
+          ? { ...folder, unreadItemCount: folder.unreadItemCount + (message.read ? 0 : 1) }
+          : folder
+      ));
+    });
+
+    setSocketEventHandler('mail:syncComplete', () => {
+      setIsSyncing(false);
+      toast.success('Mailbox sync completed');
+    });
+
+    // Check cache first for folders
+    const cachedFolders = mailCache.getFolders(activeAccount.email);
+    if (cachedFolders) {
+      console.log('[Cache] Using cached folders');
+      setFolders(cachedFolders);
+      setIsLoading(false);
+
+      const inbox = cachedFolders.find(f => f.displayName.toLowerCase() === 'inbox');
+      if (inbox && !currentFolderRef.current) {
+        setCurrentFolder(inbox.id);
+        currentFolderRef.current = inbox.id;
         
-        // Set up sync event handlers
-        setSocketEventHandler('mail:promptDateRange', () => {
-          setShowDateModal(true);
-        });
-
-        setSocketEventHandler('mail:new', (message) => {
-          // If message belongs to current folder, add it to the list
-          if (message.folder === currentFolder) {
-            setMessages(prev => [{ ...message, flagged: false }, ...prev]);
-          }
-          // Update folder unread count
-          setFolders(prev => prev.map(folder => 
-            folder.id === message.folder 
-              ? { ...folder, unreadItemCount: folder.unreadItemCount + (message.read ? 0 : 1) }
-              : folder
-          ));
-        });
-
-        setSocketEventHandler('mail:syncComplete', () => {
-          setIsSyncing(false);
-          toast.success('Mailbox sync completed');
-        });
-
-        // Check cache first for folders
-        const cachedFolders = mailCache.getFolders(activeAccount.email);
-        if (cachedFolders) {
-          console.log('[Cache] Using cached folders');
-          setFolders(cachedFolders);
+        // Check cache for inbox messages
+        const cachedMessages = mailCache.getMessages(activeAccount.email, inbox.id);
+        if (cachedMessages) {
+          console.log('[Cache] Using cached messages for inbox');
+          setMessages(cachedMessages.messages);
+          setHasMoreMessages(!!cachedMessages.nextLink);
+          setCurrentPage(cachedMessages.page);
           setIsLoading(false);
-
-          const inbox = cachedFolders.find(f => f.displayName.toLowerCase() === 'inbox');
-          if (inbox && !currentFolderRef.current) {
-            setCurrentFolder(inbox.id);
-            currentFolderRef.current = inbox.id;
-            
-            // Check cache for inbox messages
-            const cachedMessages = mailCache.getMessages(activeAccount.email, inbox.id);
-            if (cachedMessages) {
-              console.log('[Cache] Using cached messages for inbox');
-              setMessages(cachedMessages.messages);
-              setHasMoreMessages(!!cachedMessages.nextLink);
-              setCurrentPage(cachedMessages.page);
-              setIsLoading(false);
-            } else {
-              emitMailEvent.getFolder({
-                appUserId,
-                email: activeAccount.email,
-                folderId: inbox.id,
-                page: 1
-              });
-            }
-          }
         } else {
-          // Set up event handlers for folders
-          setSocketEventHandler('mail:folders', (folders) => {
-            console.log('[Socket] Received folders', folders);
-            mailCache.setFolders(activeAccount.email, folders);
-            setFolders(folders);
-            setIsLoading(false);
-
-            const inbox = folders.find(f => f.displayName.toLowerCase() === 'inbox');
-            if (inbox && !currentFolderRef.current) {
-              setCurrentFolder(inbox.id);
-              currentFolderRef.current = inbox.id;
-
-              emitMailEvent.getFolder({
-                appUserId,
-                email: activeAccount.email,
-                folderId: inbox.id,
-                page: 1
-              });
-            }
+          emitMailEvent.getFolder({
+            appUserId,
+            email: activeAccount.email,
+            folderId: inbox.id,
+            page: 1
           });
         }
+      }
+    } else {
+      // Set up event handlers for folders
+      setSocketEventHandler('mail:folders', (folders) => {
+        console.log('[Socket] Received folders', folders);
+        mailCache.setFolders(activeAccount.email, folders);
+        setFolders(folders);
+        setIsLoading(false);
 
-        // Set up event handlers for messages
-        setSocketEventHandler('mail:folderMessages', ({ folderId, messages: newMessages, nextLink, page }) => {
-          console.log('[Socket] Received messages for', folderId);
-          if (folderId === currentFolderRef.current || folderId === currentFolder) {
-            if (page === 1) {
-              const messagesWithFlagged = newMessages.map(msg => ({ ...msg, flagged: false }));
-              mailCache.setMessages(activeAccount.email, folderId, messagesWithFlagged, nextLink, page);
-              setMessages(messagesWithFlagged);
-            } else {
-              const messagesWithFlagged = newMessages.map(msg => ({ ...msg, flagged: false }));
-              mailCache.appendMessages(activeAccount.email, folderId, messagesWithFlagged, nextLink, page);
-              setMessages(prev => [...prev, ...messagesWithFlagged]);
-            }
-            setHasMoreMessages(!!nextLink);
-            setIsLoadingMore(false);
-            setIsLoading(false);
-          }
-        });
+        const inbox = folders.find(f => f.displayName.toLowerCase() === 'inbox');
+        if (inbox && !currentFolderRef.current) {
+          setCurrentFolder(inbox.id);
+          currentFolderRef.current = inbox.id;
 
-        setSocketEventHandler('mail:importantMarked', ({ messageId, flag }) => {
-          if (currentFolder) {
-            mailCache.updateMessage(activeAccount.email, currentFolder, messageId, { important: flag });
-            setMessages(prev => prev.map(m => m.id === messageId ? { ...m, important: flag } : m));
-          }
-        });
-
-        setSocketEventHandler('mail:markedRead', (messageId) => {
-          // Update message in current folder if it exists
-          if (currentFolder) {
-            mailCache.updateMessage(activeAccount.email, currentFolder, messageId, { read: true });
-            setMessages(prev => prev.map(m => m.id === messageId ? { ...m, read: true } : m));
-          }
-          
-          // Update folder unread count for the folder containing this message
-          setFolders(prev => prev.map(folder => {
-            const messageInFolder = messages.find(m => m.id === messageId && m.folder === folder.id);
-            if (messageInFolder && folder.unreadItemCount > 0) {
-              return { ...folder, unreadItemCount: folder.unreadItemCount - 1 };
-            }
-            return folder;
-          }));
-        });
-
-        setSocketEventHandler('mail:error', (error) => {
-          console.error('[Socket] Error:', error);
-          if (error.includes('Token not found') || error.includes('Token expired')) {
-            toast.error('Session expired. Please refresh the page.');
-            return;
-          }
-          if (!error.includes('Token not found')) {
-            toast.error(error);
-          }
-        });
-  
-        socket.on('connect', () => {
-          console.log('[Socket] Connected:', socket.id);
-          retryCount = 0;
-        });
-  
-        socket.on('connect_error', (err) => {
-          console.error('[Socket] Connection failed:', err);
-          retryCount++;
-          
-          if (retryCount >= maxRetries) {
-            toast.error('Unable to connect to mail server. Please refresh the page.');
-            return;
-          }
-          
-          const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 10000);
-          setTimeout(initSocket, retryDelay);
-        });
-  
-        socket.on('disconnect', (reason) => {
-          console.log('[Socket] Disconnected:', reason);
-          if (reason === 'io server disconnect' || reason === 'transport close') {
-            socket.connect();
-          }
-        });
-      };
-  
-      initSocket();
+          emitMailEvent.getFolder({
+            appUserId,
+            email: activeAccount.email,
+            folderId: inbox.id,
+            page: 1
+          });
+        }
+      });
     }
 
-    return () => {
-      disconnectSocket();
-    };
+    // Set up event handlers for messages
+    setSocketEventHandler('mail:folderMessages', ({ folderId, messages: newMessages, nextLink, page }) => {
+      console.log('[Socket] Received messages for', folderId);
+      if (folderId === currentFolderRef.current || folderId === currentFolder) {
+        if (page === 1) {
+          const messagesWithFlagged = newMessages.map(msg => ({ ...msg, flagged: false }));
+          mailCache.setMessages(activeAccount.email, folderId, messagesWithFlagged, nextLink, page);
+          setMessages(messagesWithFlagged);
+        } else {
+          const messagesWithFlagged = newMessages.map(msg => ({ ...msg, flagged: false }));
+          mailCache.appendMessages(activeAccount.email, folderId, messagesWithFlagged, nextLink, page);
+          setMessages(prev => [...prev, ...messagesWithFlagged]);
+        }
+        setHasMoreMessages(!!nextLink);
+        setIsLoadingMore(false);
+        setIsLoading(false);
+      }
+    });
+
+    setSocketEventHandler('mail:importantMarked', ({ messageId, flag }) => {
+      if (currentFolder) {
+        mailCache.updateMessage(activeAccount.email, currentFolder, messageId, { important: flag });
+        setMessages(prev => prev.map(m => m.id === messageId ? { ...m, important: flag } : m));
+      }
+    });
+
+    setSocketEventHandler('mail:markedRead', (messageId) => {
+      // Update message in current folder if it exists
+      if (currentFolder) {
+        mailCache.updateMessage(activeAccount.email, currentFolder, messageId, { read: true });
+        setMessages(prev => prev.map(m => m.id === messageId ? { ...m, read: true } : m));
+      }
+      
+      // Update folder unread count for the folder containing this message
+      setFolders(prev => prev.map(folder => {
+        const messageInFolder = messages.find(m => m.id === messageId && m.folder === folder.id);
+        if (messageInFolder && folder.unreadItemCount > 0) {
+          return { ...folder, unreadItemCount: folder.unreadItemCount - 1 };
+        }
+        return folder;
+      }));
+    });
+
+    setSocketEventHandler('mail:error', (error) => {
+      console.error('[Socket] Error:', error);
+      if (error.includes('Token not found') || error.includes('Token expired')) {
+        toast.error('Session expired. Please refresh the page.');
+        return;
+      }
+      if (!error.includes('Token not found')) {
+        toast.error(error);
+      }
+    });
   }, [activeAccount, currentFolder, router, messages, fetchLinkedAccounts]);
 
   useEffect(() => {
