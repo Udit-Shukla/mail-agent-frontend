@@ -30,7 +30,6 @@ import { SetupWizard } from '@/components/SetupWizard'
 import Link from 'next/link'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Calendar } from '@/components/ui/calendar'
-import { useSocket } from '@/contexts/SocketContext'
 
 
 // Extend Window interface to include our custom property
