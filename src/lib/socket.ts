@@ -107,14 +107,16 @@ export const initializeSocket = (appUserId: string, email?: string): Socket => {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
       reconnection: true,
-      reconnectionAttempts: Infinity,
+      reconnectionAttempts: 5,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       timeout: 20000,
       query: { appUserId },
       withCredentials: true,
       forceNew: true,
-      autoConnect: true
+      autoConnect: true,
+      upgrade: true,
+      rememberUpgrade: true
     });
 
     socket.on('connect', () => {
