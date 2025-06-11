@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import axios, { AxiosError } from 'axios'
 import { toast } from 'sonner'
 import Cookies from 'js-cookie'
+import { getApiUrl } from '@/lib/api'
 
 import {
   Card,
@@ -45,7 +46,7 @@ export default function LoginPage() {
     try {
       toast.loading('Logging in...')
       
-      const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/user/login`, values)
+      const res = await axios.post(getApiUrl('user/login'), values)
       
       // Store auth info in both localStorage and cookies
       localStorage.setItem('token', res.data.token)
