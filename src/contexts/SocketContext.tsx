@@ -31,17 +31,23 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     const appUserId = localStorage.getItem('appUserId');
     const activeEmail = localStorage.getItem('activeEmail');
 
+    console.log('[Debug] SocketContext: Checking initialization conditions:', {
+      hasAppUserId: !!appUserId,
+      hasActiveEmail: !!activeEmail
+    });
+
     if (!appUserId || !activeEmail) {
+      console.log('[Debug] SocketContext: Missing required data, redirecting to home');
       router.push('/');
       return;
     }
 
     const initSocket = () => {
-      console.log('🔌 Initializing socket connection...');
+      console.log('[Debug] SocketContext: Initializing socket connection...');
       socketRef.current = initializeSocket(appUserId, activeEmail);
 
       socketRef.current.on('connect', () => {
-        console.log('✅ Socket connected');
+        console.log('[Debug] SocketContext: Socket connected successfully');
         setIsConnected(true);
         retryCountRef.current = 0;
         if (reconnectTimeoutRef.current) {
@@ -50,14 +56,15 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       });
 
       socketRef.current.on('disconnect', (reason) => {
-        console.log('❌ Socket disconnected:', reason);
+        console.log('[Debug] SocketContext: Socket disconnected:', reason);
         setIsConnected(false);
 
         // Only attempt to reconnect if it wasn't a client-side disconnect
         if (reason !== 'io client disconnect') {
+          console.log('[Debug] SocketContext: Attempting to reconnect...');
           reconnectTimeoutRef.current = setTimeout(() => {
             if (socketRef.current && !socketRef.current.connected) {
-              console.log('🔄 Attempting to reconnect...');
+              console.log('[Debug] SocketContext: Reconnecting...');
               socketRef.current.connect();
             }
           }, 1000);
@@ -65,10 +72,11 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       });
 
       socketRef.current.on('connect_error', (error) => {
-        console.error('❌ Socket connection error:', error.message);
+        console.error('[Debug] SocketContext: Connection error:', error.message);
         setIsConnected(false);
         
         if (error.message.includes('unauthorized')) {
+          console.log('[Debug] SocketContext: Unauthorized error, redirecting to login');
           toast.error('Session expired. Please log in again.');
           disconnectSocket();
           router.push('/');
@@ -76,15 +84,20 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         }
 
         retryCountRef.current++;
+        console.log('[Debug] SocketContext: Retry attempt:', retryCountRef.current);
+        
         if (retryCountRef.current >= maxRetries) {
+          console.log('[Debug] SocketContext: Max retries reached');
           toast.error('Unable to connect to mail server. Please refresh the page.');
           return;
         }
 
         const retryDelay = Math.min(1000 * Math.pow(2, retryCountRef.current), 10000);
+        console.log('[Debug] SocketContext: Scheduling retry in', retryDelay, 'ms');
+        
         reconnectTimeoutRef.current = setTimeout(() => {
           if (socketRef.current && !socketRef.current.connected) {
-            console.log('🔄 Attempting to reconnect after error...');
+            console.log('[Debug] SocketContext: Executing retry...');
             socketRef.current.connect();
           }
         }, retryDelay);
@@ -95,6 +108,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
 
     // Cleanup function
     return () => {
+      console.log('[Debug] SocketContext: Cleaning up...');
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
@@ -107,7 +121,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       if (e.key === 'activeEmail' && e.newValue) {
         const appUserId = localStorage.getItem('appUserId');
         if (appUserId && socketRef.current) {
-          console.log('🔄 Email changed, reinitializing socket...');
+          console.log('[Debug] SocketContext: Email changed, reinitializing socket...');
           disconnectSocket();
           socketRef.current = initializeSocket(appUserId, e.newValue);
           setIsConnected(true);

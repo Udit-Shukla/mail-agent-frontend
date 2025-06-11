@@ -290,9 +290,6 @@ export const emitMailEvent = {
   markImportant: (data: { appUserId: string; email: string; messageId: string; flag: boolean }) => {
     socket?.emit('mail:markImportant', data);
   },
-  syncInRange: (data: { appUserId: string; email: string; startDate: string; endDate: string }) => {
-    socket?.emit('mail:syncInRange', data);
-  },
   retryEnrichment: (data: { appUserId: string; email: string; messageId: string }) => {
     socket?.emit('mail:retryEnrichment', data);
   }

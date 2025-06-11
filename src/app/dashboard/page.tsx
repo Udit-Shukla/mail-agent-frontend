@@ -28,8 +28,7 @@ import {
 } from "@/components/ui/tooltip"
 import { SetupWizard } from '@/components/SetupWizard'
 import Link from 'next/link'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Calendar } from '@/components/ui/calendar'
+import { useSocket } from '@/contexts/SocketContext'
 
 
 // Extend Window interface to include our custom property
@@ -59,12 +58,8 @@ export default function DashboardPage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [showSetupWizard, setShowSetupWizard] = useState(false)
   const currentFolderRef = useRef<string | null>(null)
-  // const socketInitialized = useRef(false)
   const [userEmail, setUserEmail] = useState<string>('')
-  const [showDateModal, setShowDateModal] = useState(false)
-  const [syncStartDate, setSyncStartDate] = useState<Date | null>(null)
-  const [syncEndDate, setSyncEndDate] = useState<Date>(new Date())
-  const [isSyncing, setIsSyncing] = useState(false)
+  const { socket, isConnected } = useSocket()
 
   const fetchLinkedAccounts = useCallback(async (setDefault = true) => {
     try {
@@ -87,6 +82,7 @@ export default function DashboardPage() {
         
         if (apiAccounts.length > 0 && setDefault) {
           setActiveAccount(apiAccounts[0])
+          localStorage.setItem('activeEmail', apiAccounts[0].email)
         } else if (apiAccounts.length === 0) {
           // Only show setup wizard if explicitly no accounts
           setShowSetupWizard(true)
@@ -129,20 +125,25 @@ export default function DashboardPage() {
 
   // Effect for socket initialization
   useEffect(() => {
-    if (!activeAccount) return;
-  
-    const appUserId = localStorage.getItem('appUserId');
-    if (!appUserId) {
-      router.push('/');
+    if (!activeAccount || !socket) {
+      console.log('[Debug] Socket initialization skipped:', { 
+        hasActiveAccount: !!activeAccount, 
+        hasSocket: !!socket 
+      });
       return;
     }
   
-    // Set up sync event handlers
-    setSocketEventHandler('mail:promptDateRange', () => {
-      setShowDateModal(true);
-    });
+    const appUserId = localStorage.getItem('appUserId');
+    if (!appUserId) {
+      console.log('[Debug] No appUserId found');
+      router.push('/');
+      return;
+    }
+
+    console.log('[Debug] Setting up socket handlers for:', activeAccount.email);
 
     setSocketEventHandler('mail:new', (message) => {
+      console.log('[Debug] Received mail:new event:', message.id);
       // If message belongs to current folder, add it to the list
       if (message.folder === currentFolder) {
         setMessages(prev => [{ ...message, flagged: false }, ...prev]);
@@ -156,31 +157,33 @@ export default function DashboardPage() {
     });
 
     setSocketEventHandler('mail:syncComplete', () => {
-      setIsSyncing(false);
+      console.log('[Debug] Received mail:syncComplete event');
       toast.success('Mailbox sync completed');
     });
 
     // Check cache first for folders
     const cachedFolders = mailCache.getFolders(activeAccount.email);
     if (cachedFolders) {
-      console.log('[Cache] Using cached folders');
+      console.log('[Debug] Using cached folders:', cachedFolders.length);
       setFolders(cachedFolders);
       setIsLoading(false);
 
       const inbox = cachedFolders.find(f => f.displayName.toLowerCase() === 'inbox');
       if (inbox && !currentFolderRef.current) {
+        console.log('[Debug] Setting current folder to inbox:', inbox.id);
         setCurrentFolder(inbox.id);
         currentFolderRef.current = inbox.id;
         
         // Check cache for inbox messages
         const cachedMessages = mailCache.getMessages(activeAccount.email, inbox.id);
         if (cachedMessages) {
-          console.log('[Cache] Using cached messages for inbox');
+          console.log('[Debug] Using cached messages for inbox:', cachedMessages.messages.length);
           setMessages(cachedMessages.messages);
           setHasMoreMessages(!!cachedMessages.nextLink);
           setCurrentPage(cachedMessages.page);
           setIsLoading(false);
         } else {
+          console.log('[Debug] No cached messages, fetching inbox');
           emitMailEvent.getFolder({
             appUserId,
             email: activeAccount.email,
@@ -190,15 +193,17 @@ export default function DashboardPage() {
         }
       }
     } else {
+      console.log('[Debug] No cached folders, waiting for mail:folders event');
       // Set up event handlers for folders
       setSocketEventHandler('mail:folders', (folders) => {
-        console.log('[Socket] Received folders', folders);
+        console.log('[Debug] Received mail:folders event:', folders.length);
         mailCache.setFolders(activeAccount.email, folders);
         setFolders(folders);
         setIsLoading(false);
 
         const inbox = folders.find(f => f.displayName.toLowerCase() === 'inbox');
         if (inbox && !currentFolderRef.current) {
+          console.log('[Debug] Setting current folder to inbox:', inbox.id);
           setCurrentFolder(inbox.id);
           currentFolderRef.current = inbox.id;
 
@@ -214,7 +219,11 @@ export default function DashboardPage() {
 
     // Set up event handlers for messages
     setSocketEventHandler('mail:folderMessages', ({ folderId, messages: newMessages, nextLink, page }) => {
-      console.log('[Socket] Received messages for', folderId);
+      console.log('[Debug] Received mail:folderMessages event:', { 
+        folderId, 
+        messageCount: newMessages.length,
+        page 
+      });
       if (folderId === currentFolderRef.current || folderId === currentFolder) {
         if (page === 1) {
           const messagesWithFlagged = newMessages.map(msg => ({ ...msg, flagged: false }));
@@ -256,7 +265,7 @@ export default function DashboardPage() {
     });
 
     setSocketEventHandler('mail:error', (error) => {
-      console.error('[Socket] Error:', error);
+      console.error('[Debug] Received mail:error event:', error);
       if (error.includes('Token not found') || error.includes('Token expired')) {
         toast.error('Session expired. Please refresh the page.');
         return;
@@ -265,7 +274,26 @@ export default function DashboardPage() {
         toast.error(error);
       }
     });
-  }, [activeAccount, currentFolder, router, messages, fetchLinkedAccounts]);
+
+    // Initialize mail sync if socket is connected
+    if (isConnected) {
+      console.log('[Debug] Socket connected, initializing mail sync...');
+      socket.emit('mail:init', { appUserId, email: activeAccount.email });
+    } else {
+      console.log('[Debug] Socket not connected, waiting for connection...');
+    }
+  }, [activeAccount, currentFolder, router, messages, fetchLinkedAccounts, socket, isConnected]);
+
+  // Add debug logging for loading state
+  useEffect(() => {
+    console.log('[Debug] Loading state changed:', { 
+      isLoading, 
+      hasActiveAccount: !!activeAccount, 
+      foldersCount: folders.length,
+      messagesCount: messages.length,
+      currentFolder
+    });
+  }, [isLoading, activeAccount, folders.length, messages.length, currentFolder]);
 
   useEffect(() => {
     if (!activeAccount || !currentFolder) return;
@@ -276,77 +304,12 @@ export default function DashboardPage() {
     fetchLinkedAccounts();
   }, [fetchLinkedAccounts]);
 
-  const handleSyncRangeSubmit = () => {
-    const appUserId = localStorage.getItem('appUserId')
-    if (!activeAccount || !syncStartDate || !appUserId) return
-  
-    setIsSyncing(true)
-    setShowDateModal(false)
-  
-    emitMailEvent.syncInRange({
-      appUserId,
-      email: activeAccount.email,
-      startDate: syncStartDate.toISOString(),
-      endDate: syncEndDate.toISOString()
-    })
-  }
-  
-  
   useEffect(() => {
-    if (!activeAccount || !currentFolder) return;
-
-    const appUserId = localStorage.getItem('appUserId');
-    if (!appUserId) return;
-
-    // Check cache first
-    const cachedMessages = mailCache.getMessages(activeAccount.email, currentFolder);
-    if (cachedMessages) {
-      console.log('[Cache] Using cached messages for folder:', currentFolder);
-      setMessages(cachedMessages.messages);
-      setHasMoreMessages(!!cachedMessages.nextLink);
-      setCurrentPage(cachedMessages.page);
-      setIsLoading(false);
-    } else {
-      // Re-fetch messages when not in cache
-      setIsLoading(true);
-      setMessages([]);
-      setCurrentPage(1);
-      setHasMoreMessages(false);
-
-      emitMailEvent.getFolder({
-        appUserId,
-        email: activeAccount.email,
-        folderId: currentFolder,
-        page: 1
-      });
+    if (activeAccount) {
+      localStorage.setItem('activeEmail', activeAccount.email);
     }
-  }, [activeAccount, currentFolder]);
+  }, [activeAccount]);
 
-  // Effect for visibility changes and initial data load
-  useEffect(() => {
-    let pageHidden = false;
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && pageHidden) {
-        pageHidden = false;
-        refreshCurrentFolder();
-      } else if (document.visibilityState === 'hidden') {
-        pageHidden = true;
-      }
-    };
-
-    // Refresh when component mounts
-    refreshCurrentFolder();
-
-    // Add visibility change listener
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [activeAccount, currentFolder]);
-
-  // Effect for initial data loading
   useEffect(() => {
     const email = localStorage.getItem('userEmail')
     if (email) {
@@ -763,48 +726,6 @@ export default function DashboardPage() {
           </>
         )}
       </div>
-      <Dialog open={showDateModal} onOpenChange={setShowDateModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Select date range to sync your mailbox</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-4">
-            <div>
-              <label className="text-sm font-medium mb-1 block">Start Date</label>
-              <Calendar 
-                mode="single" 
-                selected={syncStartDate || undefined}
-                onSelect={(date: Date | undefined) => setSyncStartDate(date || null)}
-                disabled={[
-                  (date) => date > new Date(),
-                  (date) => date > syncEndDate
-                ]}
-                required
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-1 block">End Date</label>
-              <Calendar 
-                mode="single" 
-                selected={syncEndDate}
-                onSelect={setSyncEndDate}
-                disabled={[
-                  (date) => date > new Date(),
-                  (date) => syncStartDate ? date < syncStartDate : false
-                ]}
-                required
-              />
-            </div>
-            <Button
-              disabled={!syncStartDate || isSyncing}
-              onClick={handleSyncRangeSubmit}
-              className="w-full"
-            >
-              {isSyncing ? 'Syncing...' : 'Start Sync'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
