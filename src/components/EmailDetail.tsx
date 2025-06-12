@@ -47,6 +47,8 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
   const [contentError, setContentError] = useState<string | null>(null);
   const [isEnriching, setIsEnriching] = useState(false);
   const { socket, isConnected, addEventHandler, removeEventHandler } = useSocket();
+  const [showOriginal, setShowOriginal] = useState(false);
+  const isLongContent = email.content && email.content.length > 400;
 
   useEffect(() => {
     // If content is not available, fetch it
@@ -155,6 +157,11 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
       removeEventHandler('mail:error', handleEmailError);
     };
   }, [email.id, emailContent, contentError, socket, isConnected, addEventHandler, removeEventHandler]);
+
+  useEffect(() => {
+    // Collapse by default if content is long
+    setShowOriginal(!isLongContent);
+  }, [email.id]);
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -360,9 +367,23 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
       {/* Email Content */}
       <div className="flex-1 p-4 overflow-auto">
         <div className="border-t border-gray-200 pt-2">
-          {/* <h3 className="text-sm font-medium text-gray-900 mb-4">Original Email</h3> */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
-            {renderEmailContent()}
+          <div className="mt-6">
+            <button
+              className="text-sm text-primary underline mb-2"
+              onClick={() => setShowOriginal(v => !v)}
+            >
+              {showOriginal ? 'Hide Original Email' : 'Show Original Email'}
+            </button>
+            {showOriginal && (
+              <div className="prose prose-sm max-w-none bg-muted/30 rounded p-4 border border-border mt-2 overflow-x-auto">
+                {/* Render as HTML if available, fallback to plain text */}
+                {email.content ? (
+                  <div dangerouslySetInnerHTML={{ __html: email.content }} />
+                ) : (
+                  <div className="italic text-muted-foreground">No original content available.</div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

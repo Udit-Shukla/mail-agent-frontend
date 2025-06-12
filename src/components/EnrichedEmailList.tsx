@@ -3,10 +3,10 @@
 import React from 'react';
 import { EmailDetail } from '@/components/EmailDetail';
 import { emitMailEvent } from '@/lib/socket';
-import { MailMessage, EmailDetails } from '@/lib/types';
 import { useSocket } from '@/contexts/SocketContext';
 import { Sparkles, AlertCircle, Clock, ArrowLeft, Filter } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+
 
 interface EmailMeta {
   summary: string;
@@ -19,12 +19,19 @@ interface EmailMeta {
   error?: string;
 }
 
-// Extend the existing EmailDetails type with AI metadata
-interface EnrichedEmail extends EmailDetails {
-  aiMeta: EmailMeta;
-  flagged: boolean;
-  to: string;
+interface EnrichedEmail {
+  id: string;
+  from: string;
+  subject: string;
+  content: string;
   preview: string;
+  timestamp: string;
+  read: boolean;
+  folder: string;
+  important: boolean;
+  flagged: boolean;
+  aiMeta: EmailMeta;
+  isProcessed: boolean;
 }
 
 const getPriorityStyle = (priority: string) => {
@@ -74,6 +81,25 @@ const CATEGORIES = [
 
 const PRIORITIES = ['urgent', 'high', 'medium', 'low'] as const;
 
+// Add EmailSkeleton component
+const EmailSkeleton = () => (
+  <div className="p-4 animate-pulse">
+    <div className="flex items-center justify-between mb-1">
+      <div className="flex items-center gap-2">
+        <div className="h-4 w-32 bg-muted rounded" />
+        <div className="h-4 w-16 bg-muted rounded-full" />
+        <div className="h-4 w-20 bg-muted rounded-full" />
+      </div>
+      <div className="h-3 w-16 bg-muted rounded" />
+    </div>
+    <div className="h-5 w-3/4 bg-muted rounded mb-2" />
+    <div className="flex items-center gap-1.5">
+      <div className="h-3 w-3 bg-muted rounded-full" />
+      <div className="h-4 w-full bg-muted rounded" />
+    </div>
+  </div>
+);
+
 export function EnrichedEmailList() {
   const router = useRouter();
   const { socket, isConnected } = useSocket();
@@ -87,183 +113,131 @@ export function EnrichedEmailList() {
   const [selectedPriority, setSelectedPriority] = React.useState<string | null>(null);
   const [showFilters, setShowFilters] = React.useState(false);
 
+  // Handle real-time enrichment updates
+  React.useEffect(() => {
+    if (!socket) return;
+
+    // Handle enrichment updates
+    const handleEnrichmentUpdate = (data: {
+      messageId: string;
+      status: 'analyzing' | 'completed' | 'error';
+      message: string;
+      aiMeta?: EmailMeta;
+      email?: EnrichedEmail;
+      error?: boolean;
+    }) => {
+      console.log('📨 Received enrichment update:', data);
+      
+      setEmails(prevEmails => {
+        return prevEmails.map(email => {
+          if (email.id === data.messageId) {
+            // If we have the full email object, use it
+            if (data.email) {
+              return data.email;
+            }
+            
+            // Otherwise, update the existing email with new AI metadata
+            return {
+              ...email,
+              aiMeta: data.aiMeta || email.aiMeta,
+              isProcessed: data.status === 'completed'
+            };
+          }
+          return email;
+        });
+      });
+
+      // Update selected email if it's the one being enriched
+      if (selectedEmail?.id === data.messageId) {
+        setSelectedEmail(prev => {
+          if (!prev) return prev;
+          if (data.email) return data.email;
+          return {
+            ...prev,
+            aiMeta: data.aiMeta || prev.aiMeta,
+            isProcessed: data.status === 'completed'
+          };
+        });
+      }
+    };
+
+    // Listen for enrichment events
+    socket.on('mail:enrichmentUpdate', handleEnrichmentUpdate);
+
+    return () => {
+      socket.off('mail:enrichmentUpdate', handleEnrichmentUpdate);
+    };
+  }, [socket, selectedEmail]);
+
+  // Handle initial email loading
   React.useEffect(() => {
     if (!socket || !isConnected) return;
 
-    // Set up event handlers
-    socket.on('mail:folderMessages', (data: { messages: MailMessage[]; folderId: string; nextLink: string | null; page: number }) => {
-      // Convert MailMessage to EnrichedEmail
-      const enrichedEmails = data.messages.map(msg => ({
-        ...msg,
-        content: '', // Add empty content initially, will be loaded on demand
-        to: msg.to || '', // Add empty to field if not present
-        aiMeta: msg.aiMeta || {
-          summary: 'Analyzing...',
-          category: 'Other',
-          priority: 'medium' as const,
-          sentiment: 'neutral' as const,
-          actionItems: [],
-          enrichedAt: new Date().toISOString(),
-          version: '1.0'
-        },
-        flagged: false
-      }));
-
-      if (data.page === 1) {
-        setEmails(enrichedEmails);
-      } else {
-        setEmails(prev => [...prev, ...enrichedEmails]);
-      }
-      
-      setHasMore(data.nextLink !== null);
-      setIsLoading(false);
-      setIsLoadingMore(false);
-    });
-
-    socket.on('mail:new', (message: MailMessage) => {
-      const enrichedEmail: EnrichedEmail = {
-        ...message,
-        content: '', // Add empty content initially, will be loaded on demand
-        to: message.to || '', // Add empty to field if not present
-        aiMeta: message.aiMeta || {
-          summary: 'Analyzing...',
-          category: 'Other',
-          priority: 'medium' as const,
-          sentiment: 'neutral' as const,
-          actionItems: [],
-          enrichedAt: new Date().toISOString(),
-          version: '1.0'
-        },
-        flagged: false
-      };
-      setEmails(prev => [enrichedEmail, ...prev]);
-    });
-
-    // Handle enrichment status updates
-    socket.on('mail:enrichmentStatus', (data: { 
-      messageId: string; 
-      status: 'queued' | 'analyzing' | 'completed' | 'error';
-      message: string;
-      aiMeta?: EmailMeta;
-    }) => {
-      setEmails(prev => 
-        prev.map(email => {
-          if (email.id === data.messageId) {
-            if (data.status === 'completed' && data.aiMeta) {
-              // Only include fields that exist in the analysis
-              const updatedAiMeta = {
-                summary: data.aiMeta.summary,
-                category: data.aiMeta.category,
-                ...(data.aiMeta.priority && { priority: data.aiMeta.priority }),
-                ...(data.aiMeta.sentiment && { sentiment: data.aiMeta.sentiment }),
-                actionItems: data.aiMeta.actionItems || [],
-                enrichedAt: data.aiMeta.enrichedAt,
-                version: data.aiMeta.version || '1.0'
-              };
-              return { ...email, aiMeta: updatedAiMeta };
-            } else if (data.status === 'error') {
-              return {
-                ...email,
-                aiMeta: {
-                  ...email.aiMeta,
-                  error: data.message,
-                  summary: 'Enrichment failed',
-                  version: email.aiMeta?.version || '1.0'
-                }
-              };
-            } else if (data.status === 'analyzing') {
-              return {
-                ...email,
-                aiMeta: {
-                  ...email.aiMeta,
-                  summary: 'Analyzing...',
-                  error: undefined,
-                  version: email.aiMeta?.version || '1.0'
-                }
-              };
-            }
-          }
-          return email;
-        })
-      );
-
-      // Update selected email if it's the one being enriched
-      setSelectedEmail(prev => {
-        if (prev?.id === data.messageId) {
-          if (data.status === 'completed' && data.aiMeta) {
-            // Only include fields that exist in the analysis
-            const updatedAiMeta = {
-              summary: data.aiMeta.summary,
-              category: data.aiMeta.category,
-              ...(data.aiMeta.priority && { priority: data.aiMeta.priority }),
-              ...(data.aiMeta.sentiment && { sentiment: data.aiMeta.sentiment }),
-              actionItems: data.aiMeta.actionItems || [],
-              enrichedAt: data.aiMeta.enrichedAt,
-              version: data.aiMeta.version || '1.0'
-            };
-            return { ...prev, aiMeta: updatedAiMeta };
-          } else if (data.status === 'error') {
-            return {
-              ...prev,
-              aiMeta: {
-                ...prev.aiMeta,
-                error: data.message,
-                summary: 'Enrichment failed',
-                version: prev.aiMeta?.version || '1.0'
-              }
-            };
-          } else if (data.status === 'analyzing') {
-            return {
-              ...prev,
-              aiMeta: {
-                ...prev.aiMeta,
-                summary: 'Analyzing...',
-                error: undefined,
-                version: prev.aiMeta?.version || '1.0'
-              }
-            };
-          }
-        }
-        return prev;
-      });
-    });
-
-    // Load initial messages from inbox
     const appUserId = localStorage.getItem('appUserId');
     const activeEmail = localStorage.getItem('activeEmail');
     
-    if (appUserId && activeEmail) {
-      emitMailEvent.getFolder({
-        appUserId,
-        email: activeEmail,
-        folderId: 'inbox',
-        page: 1
-      });
-    }
+    if (!appUserId || !activeEmail) return;
 
-    // Cleanup
+    // Listen for incoming email messages
+    const handleFolderMessages = (data: {
+      folderId: string;
+      page: number;
+      messages: EnrichedEmail[];
+      nextLink: string | null;
+    }) => {
+      console.log('📨 Received folder messages:', data);
+      setEmails(prevEmails => {
+        if (data.page === 1) {
+          return data.messages;
+        }
+        return [...prevEmails, ...data.messages];
+      });
+      setHasMore(!!data.nextLink);
+      setIsLoading(false);
+      setIsLoadingMore(false); // Reset loading more state
+    };
+
+    socket.on('mail:folderMessages', handleFolderMessages);
+
+    // Fetch inbox messages
+    emitMailEvent.getFolder({
+      appUserId,
+      email: activeEmail,
+      folderId: 'Inbox',
+      page: 1
+    });
+
     return () => {
-      socket.off('mail:folderMessages');
-      socket.off('mail:new');
-      socket.off('mail:enrichmentStatus');
+      socket.off('mail:folderMessages', handleFolderMessages);
     };
   }, [socket, isConnected]);
 
+  // Add this useEffect to listen for mail:message and update selected email
+  React.useEffect(() => {
+    if (!socket) return;
+    const handleFullMessage = (msg: EnrichedEmail) => {
+      setEmails(prevEmails => prevEmails.map(e => e.id === msg.id ? { ...e, ...msg } : e));
+      setSelectedEmail(prev => prev && prev.id === msg.id ? { ...prev, ...msg } : prev);
+    };
+    socket.on('mail:message', handleFullMessage);
+    return () => {
+      socket.off('mail:message', handleFullMessage);
+    };
+  }, [socket]);
+
   const handleEmailClick = (email: EnrichedEmail) => {
-    // Load full email content if not already loaded
-    if (!email.content) {
+    // If content is missing or too short, fetch full message
+    if (!email.content || email.content.length < 30) {
       const appUserId = localStorage.getItem('appUserId');
       const activeEmail = localStorage.getItem('activeEmail');
-      
-      if (!appUserId || !activeEmail) return;
-
-      emitMailEvent.getMessage({
-        appUserId,
-        email: activeEmail,
-        messageId: email.id
-      });
+      if (appUserId && activeEmail) {
+        emitMailEvent.getMessage({
+          appUserId,
+          email: activeEmail,
+          messageId: email.id
+        });
+      }
     }
-
     setSelectedEmail(email);
     
     if (!email.read) {
@@ -280,91 +254,32 @@ export function EnrichedEmailList() {
     }
   };
 
-  const handleToggleImportant = async (emailId: string) => {
-    const appUserId = localStorage.getItem('appUserId');
-    const activeEmail = localStorage.getItem('activeEmail');
-    
-    if (!appUserId || !activeEmail || !selectedEmail) return;
-    
-    emitMailEvent.markImportant({
-      appUserId,
-      email: activeEmail,
-      messageId: emailId,
-      flag: !selectedEmail.important
-    });
-
-    // Optimistically update UI
-    setSelectedEmail(prev => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        important: !prev.important
-      };
-    });
-
-    // Update in list
-    setEmails(prev => 
-      prev.map(email => 
-        email.id === emailId 
-          ? { ...email, important: !email.important }
-          : email
-      )
-    );
-  };
-
-  const handleLoadMore = () => {
-    if (isLoadingMore || !hasMore) return;
-
-    setIsLoadingMore(true);
-    const appUserId = localStorage.getItem('appUserId');
-    const activeEmail = localStorage.getItem('activeEmail');
-    
-    if (appUserId && activeEmail) {
-      const nextPage = currentPage + 1;
-      setCurrentPage(nextPage);
-      emitMailEvent.getFolder({
-        appUserId,
-        email: activeEmail,
-        folderId: 'inbox',
-        page: nextPage
-      });
-    }
-  };
-
-  const getEnrichmentStatus = (email: EnrichedEmail) => {
-    if (email.aiMeta?.error) {
-      return { icon: <AlertCircle className="h-3 w-3 text-destructive" />, text: 'Enrichment failed' };
-    }
-    if (email.aiMeta?.summary && email.aiMeta.summary !== 'Analyzing...' && email.aiMeta.enrichedAt) {
-      return { icon: <Sparkles className="h-3 w-3 text-primary" />, text: email.aiMeta.summary };
-    }
-    return { icon: <Clock className="h-3 w-3 text-muted-foreground" />, text: email.preview };
-  };
-
-  const filteredEmails = React.useMemo(() => {
-    return emails.filter(email => {
-      const matchesCategory = !selectedCategory || email.aiMeta.category === selectedCategory;
-      const matchesPriority = !selectedPriority || email.aiMeta.priority === selectedPriority;
-      return matchesCategory && matchesPriority;
-    });
-  }, [emails, selectedCategory, selectedPriority]);
-
   const handleBackToClassic = () => {
     router.push('/dashboard');
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
+  const getEnrichmentStatus = (email: EnrichedEmail) => {
+    if (email.aiMeta?.error) {
+      return { icon: <AlertCircle className="h-3 w-3 text-destructive" />, text: email.aiMeta.error };
+    }
+    if (!email.aiMeta?.summary) {
+      return { icon: <Clock className="h-3 w-3 text-muted-foreground" />, text: 'Analyzing...' };
+    }
+    return { icon: <Sparkles className="h-3 w-3 text-primary" />, text: email.aiMeta.summary };
+  };
+
+  const filteredEmails = React.useMemo(() => {
+    return emails.filter(email => {
+      const matchesCategory = !selectedCategory || email.aiMeta?.category === selectedCategory;
+      const matchesPriority = !selectedPriority || email.aiMeta?.priority === selectedPriority;
+      return matchesCategory && matchesPriority;
+    });
+  }, [emails, selectedCategory, selectedPriority]);
 
   return (
     <div className="flex h-full bg-background">
       {/* Email List */}
-      <div className="w-1/3 border-r border-border bg-card overflow-y-auto">
+      <div className="w-2/5 h-full border-r border-border bg-card overflow-y-auto">
         {/* Header with back button and filters */}
         <div className="sticky top-0 z-10 bg-card border-b border-border p-4">
           <div className="flex items-center justify-between mb-2">
@@ -380,7 +295,7 @@ export function EnrichedEmailList() {
               className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors"
             >
               <Filter className="h-4 w-4" />
-              Filters
+              {showFilters ? 'Hide Filters' : 'Show Filters'}
             </button>
           </div>
           
@@ -421,77 +336,124 @@ export function EnrichedEmailList() {
         </div>
 
         <div className="divide-y divide-border">
-          {filteredEmails.map((email) => {
-            const { icon, text } = getEnrichmentStatus(email);
-            return (
-              <div
-                key={email.id}
-                onClick={() => handleEmailClick(email)}
-                className={`p-4 cursor-pointer hover:bg-accent/50 transition-colors ${
-                  selectedEmail?.id === email.id ? 'bg-accent' : ''
-                }`}
-              >
-                <div className="flex flex-col">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium text-card-foreground truncate">
-                        {email.from.split('<')[0]}
+          {isLoading ? (
+            // Show skeleton loading for initial load
+            Array.from({ length: 10 }).map((_, i) => (
+              <EmailSkeleton key={i} />
+            ))
+          ) : (
+            filteredEmails.map((email) => {
+              const { icon, text } = getEnrichmentStatus(email);
+              return (
+                <div
+                  key={email.id}
+                  onClick={() => handleEmailClick(email)}
+                  className={`p-4 cursor-pointer hover:bg-accent/50 transition-colors ${
+                    selectedEmail?.id === email.id ? 'bg-accent' : ''
+                  }`}
+                >
+                  <div className="flex flex-col">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-card-foreground truncate">
+                          {email.from.split('<')[0]}
+                        </p>
+                        {email.aiMeta?.priority && (
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${getPriorityStyle(email.aiMeta.priority)}`}>
+                            {email.aiMeta.priority}
+                          </span>
+                        )}
+                        {email.aiMeta?.category && (
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${getCategoryStyle()}`}>
+                            {email.aiMeta.category}
+                          </span>
+                        )}
+                        {email.aiMeta?.sentiment && (
+                          <span className={`text-xs ${getSentimentStyle(email.aiMeta.sentiment)}`}>
+                            {email.aiMeta.sentiment}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(email.timestamp).toLocaleTimeString()}
                       </p>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${getPriorityStyle(email.aiMeta.priority)}`}>
-                        {email.aiMeta.priority}
-                      </span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${getCategoryStyle()}`}>
-                        {email.aiMeta.category}
-                      </span>
-                      <span className={`text-xs ${getSentimentStyle(email.aiMeta.sentiment)}`}>
-                        {email.aiMeta.sentiment}
-                      </span>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(email.timestamp).toLocaleTimeString()}
+                    <p className="text-sm font-semibold text-card-foreground mb-2">
+                      {email.subject}
                     </p>
-                  </div>
-                  <p className="text-sm font-semibold text-card-foreground mb-2">
-                    {email.subject}
-                  </p>
-                  <div className="flex items-center gap-1.5">
-                    <div className="flex-shrink-0">
-                      {icon}
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex-shrink-0">
+                        {icon}
+                      </div>
+                      <p className="text-sm text-muted-foreground italic line-clamp-2 flex-1">
+                        {text}
+                      </p>
                     </div>
-                    <p className="text-sm text-muted-foreground italic line-clamp-2 flex-1">
-                      {text}
-                    </p>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
         
         {/* Load More Button */}
         {hasMore && (
           <div className="p-4 text-center">
             <button
-              onClick={handleLoadMore}
+              onClick={() => {
+                setIsLoadingMore(true);
+                const appUserId = localStorage.getItem('appUserId');
+                const activeEmail = localStorage.getItem('activeEmail');
+                if (appUserId && activeEmail) {
+                  emitMailEvent.getFolder({
+                    appUserId,
+                    email: activeEmail,
+                    folderId: 'Inbox',
+                    page: currentPage + 1
+                  });
+                  setCurrentPage(prev => prev + 1);
+                }
+              }}
               disabled={isLoadingMore}
               className="text-sm text-primary hover:text-primary/80 disabled:opacity-50"
             >
-              {isLoadingMore ? 'Loading...' : 'Load More'}
+              {isLoadingMore ? (
+                <div className="flex items-center justify-center gap-2">
+                  <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                  Loading...
+                </div>
+              ) : (
+                'Load More'
+              )}
             </button>
           </div>
         )}
       </div>
 
       {/* Email Detail */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="w-3/5 h-full overflow-y-auto bg-card border-l border-border flex items-center justify-center">
         {selectedEmail ? (
-          <EmailDetail
-            email={selectedEmail}
-            onToggleImportant={handleToggleImportant}
+          <EmailDetail 
+            email={selectedEmail} 
+            onToggleImportant={() => {
+              const appUserId = localStorage.getItem('appUserId');
+              const activeEmail = localStorage.getItem('activeEmail');
+              if (appUserId && activeEmail) {
+                emitMailEvent.markImportant({
+                  appUserId,
+                  email: activeEmail,
+                  messageId: selectedEmail.id,
+                  flag: !selectedEmail.important
+                });
+              }
+            }} 
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-muted-foreground">
-            Select an email to view details
+          <div className="flex flex-col items-center justify-center w-full h-full text-muted-foreground">
+            <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" className="mb-4 opacity-30">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            <span className="text-lg">Select an email to view details</span>
           </div>
         )}
       </div>

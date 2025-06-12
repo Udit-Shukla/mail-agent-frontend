@@ -219,7 +219,7 @@ export function MailLayout({ children }: MailLayoutProps) {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex">
+      <div className="w-full">
         {children}
       </div>
       <ComposeFAB />
