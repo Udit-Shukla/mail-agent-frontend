@@ -69,36 +69,35 @@ type SocketEventHandlers = {
   }) => void;
 };
 
-let socket: Socket | null = null;
+let socket: (Socket & { connectedEmail?: string | null }) | null = null;
 let isInitializing = false;
 let connectedEmail: string | null = null;
 let eventHandlers: Partial<SocketEventHandlers> = {};
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
 
 export const initializeSocket = (appUserId: string, email?: string): Socket => {
   // If socket exists and is connected with the same email, reuse it
   if (socket?.connected && email === connectedEmail) {
-    console.log('🔄 Reusing existing socket connection for:', email);
     return socket;
   }
 
   // If already initializing, wait
   if (isInitializing) {
-    console.log('⏳ Socket initialization in progress...');
     return socket!;
   }
 
   const serverUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-  console.log('🔌 Initializing socket with:', { serverUrl, appUserId, email });
 
   isInitializing = true;
 
   // If there's an existing socket but with different email, clean it up
   if (socket && connectedEmail !== email) {
-    console.log('🔌 Cleaning up existing socket connection...');
     socket.removeAllListeners();
     socket.disconnect();
     socket = null;
     eventHandlers = {};
+    reconnectAttempts = 0;
   }
 
   // Only create a new socket if we don't have one
@@ -107,7 +106,7 @@ export const initializeSocket = (appUserId: string, email?: string): Socket => {
       path: '/socket.io',
       transports: ['polling', 'websocket'],
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
       timeout: 20000,
@@ -122,12 +121,11 @@ export const initializeSocket = (appUserId: string, email?: string): Socket => {
     });
 
     socket.on('connect', () => {
-      console.log('✅ Socket connected:', socket?.id);
       isInitializing = false;
       connectedEmail = email || null;
+      reconnectAttempts = 0;
 
       if (email) {
-        console.log('📧 Emitting mail:init for:', email);
         socket!.emit('mail:init', { appUserId, email });
       }
     });
@@ -136,14 +134,19 @@ export const initializeSocket = (appUserId: string, email?: string): Socket => {
       console.log('❌ Socket disconnected:', reason);
       isInitializing = false;
       
-      // Try to reconnect on any disconnect
+      // Only attempt reconnect if we haven't exceeded max attempts
+      if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+        reconnectAttempts++;
       if (reason === 'io server disconnect' || reason === 'transport close') {
         setTimeout(() => {
           if (socket && !socket.connected) {
-            console.log('🔄 Attempting to reconnect...');
+              console.log(`🔄 Attempting to reconnect (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
             socket.connect();
           }
         }, 1000);
+        }
+      } else {
+        console.log('❌ Max reconnection attempts reached');
       }
     });
 
@@ -151,35 +154,36 @@ export const initializeSocket = (appUserId: string, email?: string): Socket => {
       console.error('❌ Socket connection error:', err.message);
       isInitializing = false;
       
-      // Handle specific error cases
       if (err.message.includes('unauthorized')) {
         console.log('🔒 Authentication required');
         eventHandlers['mail:error']?.('Authentication required');
         return;
       }
 
-      // For other errors, try to reconnect
+      // Only attempt reconnect if we haven't exceeded max attempts
+      if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+        reconnectAttempts++;
       setTimeout(() => {
         if (socket && !socket.connected) {
-          console.log('🔄 Attempting to reconnect after error...');
+            console.log(`🔄 Attempting to reconnect after error (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`);
           socket.connect();
         }
       }, 1000);
+      } else {
+        console.log('❌ Max reconnection attempts reached');
+      }
     });
 
     // Set up mail event handlers
     socket.on('mail:folders', (folders: MailFolder[]) => {
-      console.log('📁 Received folders:', folders);
       eventHandlers['mail:folders']?.(folders);
     });
 
     socket.on('mail:folderMessages', (data: { folderId: string; messages: MailMessage[]; nextLink: string | null; page: number }) => {
-      console.log('📨 Folder:', data.folderId, '| Messages:', data.messages?.length);
       eventHandlers['mail:folderMessages']?.(data);
     });
 
     socket.on('mail:message', (message: EmailDetails) => {
-      console.log('📧 Received message details:', message.id);
       eventHandlers['mail:message']?.(message);
     });
 
@@ -213,11 +217,6 @@ export const initializeSocket = (appUserId: string, email?: string): Socket => {
       eventHandlers['mail:error']?.(error);
     });
 
-    socket.on('mail:promptDateRange', () => {
-      console.log('📅 Prompting date range');
-      eventHandlers['mail:promptDateRange']?.();
-    });
-
     socket.on('mail:new', (message: MailMessage) => {
       console.log('📧 New message:', message.id);
       eventHandlers['mail:new']?.(message);
@@ -243,7 +242,6 @@ export const initializeSocket = (appUserId: string, email?: string): Socket => {
         error?: string;
       };
     }) => {
-      console.log('📄 Enrichment status:', data);
       eventHandlers['mail:enrichmentStatus']?.(data);
     });
   }
@@ -262,6 +260,7 @@ export const disconnectSocket = () => {
     eventHandlers = {};
     connectedEmail = null;
     isInitializing = false;
+    reconnectAttempts = 0;
   }
 };
 

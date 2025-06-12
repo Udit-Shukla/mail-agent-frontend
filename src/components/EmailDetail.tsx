@@ -46,7 +46,7 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
   const [isLoadingContent, setIsLoadingContent] = useState(!email.content);
   const [contentError, setContentError] = useState<string | null>(null);
   const [isEnriching, setIsEnriching] = useState(false);
-  const { socket, isConnected } = useSocket();
+  const { socket, isConnected, addEventHandler, removeEventHandler } = useSocket();
 
   useEffect(() => {
     // If content is not available, fetch it
@@ -128,10 +128,10 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
       setIsLoadingContent(false);
     };
 
-    // Add socket event listeners
+    // Add socket event handlers using the context
     if (socket) {
-      socket.on('mail:message', handleEmailContent);
-      socket.on('mail:error', handleEmailError);
+      addEventHandler('mail:message', handleEmailContent);
+      addEventHandler('mail:error', handleEmailError);
       
       // If socket is already connected, try fetching again
       if (isConnected && !emailContent && !contentError) {
@@ -150,12 +150,11 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
     }
 
     return () => {
-      if (socket) {
-        socket.off('mail:message', handleEmailContent);
-        socket.off('mail:error', handleEmailError);
-      }
+      // Clean up event handlers
+      removeEventHandler('mail:message', handleEmailContent);
+      removeEventHandler('mail:error', handleEmailError);
     };
-  }, [email.id, emailContent, contentError, socket, isConnected]);
+  }, [email.id, emailContent, contentError, socket, isConnected, addEventHandler, removeEventHandler]);
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {

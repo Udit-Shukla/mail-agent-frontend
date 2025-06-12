@@ -146,8 +146,6 @@ export function EnrichedEmailList() {
       message: string;
       aiMeta?: EmailMeta;
     }) => {
-      console.log('📊 Received enrichment status:', data);
-      
       setEmails(prev => 
         prev.map(email => {
           if (email.id === data.messageId) {

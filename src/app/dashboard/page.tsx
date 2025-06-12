@@ -4,12 +4,12 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
-import { initializeSocket, disconnectSocket, setSocketEventHandler, emitMailEvent } from '@/lib/socket'
+import { disconnectSocket, emitMailEvent } from '@/lib/socket'
 import { mailCache } from '@/lib/cache'
 import { MailFolder, MailMessage, Account, Provider } from '@/lib/types'
 import { toast } from 'sonner'
 import { LoadingScreen } from '@/components/LoadingScreen'
-import { Loader2, MoreVertical, Star, Sparkles } from 'lucide-react'
+import { MoreVertical, Star, Sparkles } from 'lucide-react'
 import { SiGmail} from 'react-icons/si'
 import { PiMicrosoftOutlookLogoDuotone } from "react-icons/pi";
 import { IoMdAdd, IoMdLogOut } from 'react-icons/io'
@@ -29,6 +29,9 @@ import {
 import { SetupWizard } from '@/components/SetupWizard'
 import Link from 'next/link'
 import { useSocket } from '@/contexts/SocketContext'
+import { ComposeFAB } from '@/components/ComposeFAB'
+import { Skeleton } from "@/components/ui/skeleton"
+import { Counter } from "@/components/ui/counter";
 
 
 // Extend Window interface to include our custom property
@@ -45,6 +48,26 @@ const ProviderIcon = ({ provider, className }: { provider: Provider, className?:
   return <SiGmail className={className} />
 }
 
+// Add this component after the ProviderIcon component
+const EmailSkeleton = () => (
+  <div className="flex items-center space-x-4 p-4 border-b">
+    <Skeleton className="h-12 w-12 rounded-full" />
+    <div className="space-y-2 flex-1">
+      <Skeleton className="h-4 w-[250px]" />
+      <Skeleton className="h-4 w-[200px]" />
+    </div>
+  </div>
+);
+
+// Add this component after EmailSkeleton
+const EmailListSkeleton = () => (
+  <div className="divide-y h-full">
+    {Array.from({ length: 10 }).map((_, i) => (
+      <EmailSkeleton key={i} />
+    ))}
+  </div>
+);
+
 export default function DashboardPage() {
   const router = useRouter()
   const [linkedAccounts, setLinkedAccounts] = useState<Account[]>([])
@@ -59,7 +82,8 @@ export default function DashboardPage() {
   const [showSetupWizard, setShowSetupWizard] = useState(false)
   const currentFolderRef = useRef<string | null>(null)
   const [userEmail, setUserEmail] = useState<string>('')
-  const { socket, isConnected } = useSocket()
+  const { socket, isConnected, addEventHandler, removeEventHandler } = useSocket()
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false)
 
   const fetchLinkedAccounts = useCallback(async (setDefault = true) => {
     try {
@@ -102,26 +126,32 @@ export default function DashboardPage() {
     }
   }, [router])
 
-  // Add a function to refresh current folder data
-  const refreshCurrentFolder = useCallback(() => {
-    if (!activeAccount || !currentFolder) return;
-
+  const initializeFolders = useCallback(async (account: Account) => {
     const appUserId = localStorage.getItem('appUserId');
     if (!appUserId) return;
 
-    // Re-fetch messages for current folder
+    // Check cache first
+    const cachedFolders = mailCache.getFolders(account.email);
+    if (cachedFolders) {
+      console.log('[Debug] Using cached folders:', cachedFolders.length);
+      setFolders(cachedFolders);
+      
+      const inbox = cachedFolders.find(f => f.displayName.toLowerCase() === 'inbox');
+      if (inbox && !currentFolderRef.current) {
+        setCurrentFolder(inbox.id);
+        currentFolderRef.current = inbox.id;
+      }
+      return;
+    }
+
+    // If no cache, fetch folders once using getFolder
     emitMailEvent.getFolder({
       appUserId,
-      email: activeAccount.email,
-      folderId: currentFolder,
+      email: account.email,
+      folderId: 'root', // Use root folder to get all folders
       page: 1
     });
-
-    // Re-initialize socket to get updated folders
-    if (appUserId && activeAccount) {
-      initializeSocket(appUserId, activeAccount.email);
-    }
-  }, [activeAccount, currentFolder]);
+  }, []);
 
   // Effect for socket initialization
   useEffect(() => {
@@ -142,112 +172,29 @@ export default function DashboardPage() {
 
     console.log('[Debug] Setting up socket handlers for:', activeAccount.email);
 
-    setSocketEventHandler('mail:new', (message) => {
+    // Initialize folders only once when account changes
+    initializeFolders(activeAccount);
+
+    // Set up message-related event handlers
+    const handleNewMessage = (message: MailMessage) => {
       console.log('[Debug] Received mail:new event:', message.id);
-      // If message belongs to current folder, add it to the list
       if (message.folder === currentFolder) {
         setMessages(prev => [{ ...message, flagged: false }, ...prev]);
       }
-      // Update folder unread count
+      // Update folder unread count without refreshing entire folder list
       setFolders(prev => prev.map(folder => 
         folder.id === message.folder 
           ? { ...folder, unreadItemCount: folder.unreadItemCount + (message.read ? 0 : 1) }
           : folder
       ));
-    });
+    };
 
-    setSocketEventHandler('mail:syncComplete', () => {
+    const handleSyncComplete = () => {
       console.log('[Debug] Received mail:syncComplete event');
       toast.success('Mailbox sync completed');
-    });
+    };
 
-    // Check cache first for folders
-    const cachedFolders = mailCache.getFolders(activeAccount.email);
-    if (cachedFolders) {
-      console.log('[Debug] Using cached folders:', cachedFolders.length);
-      setFolders(cachedFolders);
-      setIsLoading(false);
-
-      const inbox = cachedFolders.find(f => f.displayName.toLowerCase() === 'inbox');
-      if (inbox && !currentFolderRef.current) {
-        console.log('[Debug] Setting current folder to inbox:', inbox.id);
-        setCurrentFolder(inbox.id);
-        currentFolderRef.current = inbox.id;
-        
-        // Check cache for inbox messages
-        const cachedMessages = mailCache.getMessages(activeAccount.email, inbox.id);
-        if (cachedMessages) {
-          console.log('[Debug] Using cached messages for inbox:', cachedMessages.messages.length);
-          setMessages(cachedMessages.messages);
-          setHasMoreMessages(!!cachedMessages.nextLink);
-          setCurrentPage(cachedMessages.page);
-          setIsLoading(false);
-        } else {
-          console.log('[Debug] No cached messages, fetching inbox');
-          emitMailEvent.getFolder({
-            appUserId,
-            email: activeAccount.email,
-            folderId: inbox.id,
-            page: 1
-          });
-        }
-      }
-    } else {
-      console.log('[Debug] No cached folders, waiting for mail:folders event');
-      // Set up event handlers for folders
-      setSocketEventHandler('mail:folders', (folders) => {
-        console.log('[Debug] Received mail:folders event:', folders.length);
-        mailCache.setFolders(activeAccount.email, folders);
-        setFolders(folders);
-        setIsLoading(false);
-
-        const inbox = folders.find(f => f.displayName.toLowerCase() === 'inbox');
-        if (inbox && !currentFolderRef.current) {
-          console.log('[Debug] Setting current folder to inbox:', inbox.id);
-          setCurrentFolder(inbox.id);
-          currentFolderRef.current = inbox.id;
-
-          emitMailEvent.getFolder({
-            appUserId,
-            email: activeAccount.email,
-            folderId: inbox.id,
-            page: 1
-          });
-        }
-      });
-    }
-
-    // Set up event handlers for messages
-    setSocketEventHandler('mail:folderMessages', ({ folderId, messages: newMessages, nextLink, page }) => {
-      console.log('[Debug] Received mail:folderMessages event:', { 
-        folderId, 
-        messageCount: newMessages.length,
-        page 
-      });
-      if (folderId === currentFolderRef.current || folderId === currentFolder) {
-        if (page === 1) {
-          const messagesWithFlagged = newMessages.map(msg => ({ ...msg, flagged: false }));
-          mailCache.setMessages(activeAccount.email, folderId, messagesWithFlagged, nextLink, page);
-          setMessages(messagesWithFlagged);
-        } else {
-          const messagesWithFlagged = newMessages.map(msg => ({ ...msg, flagged: false }));
-          mailCache.appendMessages(activeAccount.email, folderId, messagesWithFlagged, nextLink, page);
-          setMessages(prev => [...prev, ...messagesWithFlagged]);
-        }
-        setHasMoreMessages(!!nextLink);
-        setIsLoadingMore(false);
-        setIsLoading(false);
-      }
-    });
-
-    setSocketEventHandler('mail:importantMarked', ({ messageId, flag }) => {
-      if (currentFolder) {
-        mailCache.updateMessage(activeAccount.email, currentFolder, messageId, { important: flag });
-        setMessages(prev => prev.map(m => m.id === messageId ? { ...m, important: flag } : m));
-      }
-    });
-
-    setSocketEventHandler('mail:markedRead', (messageId) => {
+    const handleMarkedRead = (messageId: string) => {
       // Update message in current folder if it exists
       if (currentFolder) {
         mailCache.updateMessage(activeAccount.email, currentFolder, messageId, { read: true });
@@ -262,27 +209,148 @@ export default function DashboardPage() {
         }
         return folder;
       }));
-    });
+    };
 
-    setSocketEventHandler('mail:error', (error) => {
-      console.error('[Debug] Received mail:error event:', error);
-      if (error.includes('Token not found') || error.includes('Token expired')) {
-        toast.error('Session expired. Please refresh the page.');
-        return;
+    const handleError = (error: string) => {
+      console.error('[Debug] Socket error:', error);
+      setIsLoadingMessages(false);
+      setIsLoading(false);
+      // You might want to show a toast or notification here
+    };
+
+    const handleFolderMessages = ({ folderId, messages: newMessages, nextLink, page }: { 
+      folderId: string; 
+      messages: MailMessage[]; 
+      nextLink: string | null; 
+      page: number 
+    }) => {
+      console.log('[Debug] Received folder messages:', { 
+        folderId, 
+        messageCount: newMessages.length, 
+        page,
+        currentFolder,
+        isCurrentFolder: folderId === currentFolder
+      });
+      
+      // Cache the messages regardless of current folder
+      if (activeAccount) {
+        mailCache.setMessages(activeAccount.email, folderId, newMessages, nextLink, page);
       }
-      if (!error.includes('Token not found')) {
-        toast.error(error);
+
+      // Update state if this is the current folder or if we don't have a current folder yet
+      if (folderId === currentFolder || !currentFolder) {
+        const messagesWithFlagged = newMessages.map(msg => ({ ...msg, flagged: false }));
+        
+        if (page === 1) {
+          // Replace messages for first page
+          setMessages(messagesWithFlagged);
+        } else {
+          // Append messages for subsequent pages
+          setMessages(prev => [...prev, ...messagesWithFlagged]);
+        }
+        
+        setHasMoreMessages(!!nextLink);
+        setCurrentPage(page);
+        setIsLoadingMessages(false);
+        setIsLoadingMore(false);
+        setIsLoading(false);
       }
-    });
+    };
+
+    const handleFolders = (folders: MailFolder[]) => {
+      console.log('[Debug] Received mail:folders event:', folders.length);
+      mailCache.setFolders(activeAccount.email, folders);
+      setFolders(folders);
+      setIsLoading(false);
+
+      const inbox = folders.find(f => f.displayName.toLowerCase() === 'inbox');
+      if (inbox) {
+        console.log('[Debug] Setting current folder to inbox:', inbox.id);
+        setCurrentFolder(inbox.id);
+        currentFolderRef.current = inbox.id;
+        
+        // Check cache first for inbox messages
+        const cachedMessages = mailCache.getMessages(activeAccount.email, inbox.id);
+        if (cachedMessages) {
+          console.log('[Debug] Using cached messages for inbox:', cachedMessages.messages.length);
+          setMessages(cachedMessages.messages);
+          setHasMoreMessages(!!cachedMessages.nextLink);
+          setCurrentPage(cachedMessages.page);
+          setIsLoading(false);
+          setIsLoadingMessages(false);
+        } else {
+          console.log('[Debug] No cached messages, fetching inbox');
+          setIsLoadingMessages(true);
+          emitMailEvent.getFolder({
+            appUserId,
+            email: activeAccount.email,
+            folderId: inbox.id,
+            page: 1
+          });
+        }
+      }
+    };
+
+    const handleImportantMarked = ({ messageId, flag }: { messageId: string; flag: boolean }) => {
+      if (currentFolder) {
+        mailCache.updateMessage(activeAccount.email, currentFolder, messageId, { important: flag });
+        setMessages(prev => prev.map(m => m.id === messageId ? { ...m, important: flag } : m));
+      }
+    };
+
+    // Add event handlers using the context
+    addEventHandler('mail:new', handleNewMessage);
+    addEventHandler('mail:syncComplete', handleSyncComplete);
+    addEventHandler('mail:markedRead', handleMarkedRead);
+    addEventHandler('mail:error', handleError);
+    addEventHandler('mail:folders', handleFolders);
+    addEventHandler('mail:folderMessages', handleFolderMessages);
+    addEventHandler('mail:importantMarked', handleImportantMarked);
 
     // Initialize mail sync if socket is connected
-    if (isConnected) {
+    if (isConnected && activeAccount) {
       console.log('[Debug] Socket connected, initializing mail sync...');
+      const appUserId = localStorage.getItem('appUserId');
+      if (!appUserId) {
+        console.error('[Debug] No appUserId found');
+        return;
+      }
       socket.emit('mail:init', { appUserId, email: activeAccount.email });
     } else {
-      console.log('[Debug] Socket not connected, waiting for connection...');
+      console.log('[Debug] Socket not connected or no active account, waiting...');
     }
-  }, [activeAccount, currentFolder, router, messages, fetchLinkedAccounts, socket, isConnected]);
+
+    // Add visibility change handler only for messages
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && currentFolder && activeAccount) {
+        // Only refresh messages, not folders
+        setIsLoadingMessages(true);
+        const appUserId = localStorage.getItem('appUserId');
+        if (!appUserId) return;
+        
+        emitMailEvent.getFolder({
+          appUserId,
+          email: activeAccount.email,
+          folderId: currentFolder,
+          page: 1
+        });
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Cleanup function
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      removeEventHandler('mail:new', handleNewMessage);
+      removeEventHandler('mail:syncComplete', handleSyncComplete);
+      removeEventHandler('mail:markedRead', handleMarkedRead);
+      removeEventHandler('mail:error', handleError);
+      removeEventHandler('mail:folders', handleFolders);
+      removeEventHandler('mail:folderMessages', handleFolderMessages);
+      removeEventHandler('mail:importantMarked', handleImportantMarked);
+    };
+  }, [activeAccount, socket, isConnected, addEventHandler, removeEventHandler]);
 
   // Add debug logging for loading state
   useEffect(() => {
@@ -295,21 +363,55 @@ export default function DashboardPage() {
     });
   }, [isLoading, activeAccount, folders.length, messages.length, currentFolder]);
 
+  // Effect for refreshing current folder
   useEffect(() => {
     if (!activeAccount || !currentFolder) return;
-    refreshCurrentFolder();
-  }, [activeAccount, currentFolder, refreshCurrentFolder]);
+    
+    // Check cache first
+    const cachedMessages = mailCache.getMessages(activeAccount.email, currentFolder);
+    if (cachedMessages) {
+      console.log('[Debug] Using cached messages for current folder:', currentFolder);
+      setMessages(cachedMessages.messages);
+      setHasMoreMessages(!!cachedMessages.nextLink);
+      setCurrentPage(cachedMessages.page);
+      setIsLoadingMessages(false);
+    } else {
+      console.log('[Debug] No cached messages, fetching current folder:', currentFolder);
+      setIsLoadingMessages(true);
+      const appUserId = localStorage.getItem('appUserId');
+      if (!appUserId) return;
+      
+      // Add a timeout to reset loading state if no response is received
+      const timeoutId = setTimeout(() => {
+        console.log('[Debug] Folder messages fetch timeout, resetting loading state');
+        setIsLoadingMessages(false);
+        setIsLoading(false);
+      }, 10000); // 10 second timeout
 
+      emitMailEvent.getFolder({
+        appUserId,
+        email: activeAccount.email,
+        folderId: currentFolder,
+        page: 1
+      });
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [activeAccount, currentFolder]);
+
+  // Effect for fetching linked accounts
   useEffect(() => {
     fetchLinkedAccounts();
   }, [fetchLinkedAccounts]);
 
+  // Effect for setting active email in localStorage
   useEffect(() => {
     if (activeAccount) {
       localStorage.setItem('activeEmail', activeAccount.email);
     }
   }, [activeAccount]);
 
+  // Effect for initial user email setup
   useEffect(() => {
     const email = localStorage.getItem('userEmail')
     if (email) {
@@ -319,27 +421,32 @@ export default function DashboardPage() {
   }, [])
 
   const handleFolderClick = (folderId: string) => {
-    if (folderId === currentFolder || !activeAccount) return;
-
+    if (folderId === currentFolder) return;
+    
     setCurrentFolder(folderId);
     currentFolderRef.current = folderId;
+    setMessages([]); // Clear existing messages
+    setIsLoadingMessages(true); // Set loading state
+    
+    const appUserId = localStorage.getItem('appUserId');
+    if (!appUserId || !activeAccount) return;
 
     // Check cache first
     const cachedMessages = mailCache.getMessages(activeAccount.email, folderId);
     if (cachedMessages) {
-      console.log('[Cache] Using cached messages for folder:', folderId);
+      console.log('[Debug] Using cached messages for folder:', folderId);
       setMessages(cachedMessages.messages);
       setHasMoreMessages(!!cachedMessages.nextLink);
       setCurrentPage(cachedMessages.page);
-      setIsLoading(false);
+      setIsLoadingMessages(false);
     } else {
-      setCurrentPage(1);
-      setMessages([]);
-      setHasMoreMessages(false);
-      setIsLoading(true);
-
-      const appUserId = localStorage.getItem('appUserId');
-      if (!appUserId) return;
+      console.log('[Debug] No cached messages, fetching folder:', folderId);
+      // Add a timeout to reset loading state if no response is received
+      const timeoutId = setTimeout(() => {
+        console.log('[Debug] Folder messages fetch timeout, resetting loading state');
+        setIsLoadingMessages(false);
+        setIsLoading(false);
+      }, 10000); // 10 second timeout
 
       emitMailEvent.getFolder({
         appUserId,
@@ -347,24 +454,54 @@ export default function DashboardPage() {
         folderId,
         page: 1
       });
+
+      return () => clearTimeout(timeoutId);
     }
   };
 
-  const handleMarkAsImportant = (messageId: string) => {
-    const appUserId = localStorage.getItem('appUserId');
-    const msg = messages.find(m => m.id === messageId);
-    if (!appUserId || !msg || !activeAccount) return;
+  const handleEmailClick = (email: MailMessage, event: React.MouseEvent) => {
+    // Only handle click if it's not from the important button
+    if (event?.target instanceof HTMLElement && event.target.closest('.important-button')) {
+      return;
+    }
     
-    const flag = !msg.important;
+    // Mark as read if needed
+    if (!email.read) {
+      const appUserId = localStorage.getItem('appUserId');
+      if (!appUserId || !activeAccount) return;
+      
+      emitMailEvent.markRead({
+        appUserId,
+        email: activeAccount.email,
+        messageId: email.id
+      });
+    }
+
+    // Navigate to email detail page
+    router.push(`/email/${email.id}`);
+  };
+
+  const handleToggleImportant = async (email: MailMessage, event: React.MouseEvent) => {
+    // Prevent the click from bubbling up to the email row
+    event.stopPropagation();
+    
+    const appUserId = localStorage.getItem('appUserId');
+    if (!appUserId || !activeAccount) return;
+    
     emitMailEvent.markImportant({
       appUserId,
       email: activeAccount.email,
-      messageId,
-      flag
+      messageId: email.id,
+      flag: !email.important
     });
 
-    setMessages(prev =>
-      prev.map(m => m.id === messageId ? { ...m, important: flag } : m)
+    // Optimistically update UI
+    setMessages(prev => 
+      prev.map(msg => 
+        msg.id === email.id 
+          ? { ...msg, important: !msg.important }
+          : msg
+      )
     );
   };
 
@@ -384,15 +521,15 @@ export default function DashboardPage() {
   };
 
   const handleLoadMore = () => {
-    if (!currentFolder || !activeAccount || isLoadingMore) return;
+    if (isLoadingMore || !hasMoreMessages || !activeAccount || !currentFolder) return;
 
     setIsLoadingMore(true);
-    const nextPage = currentPage + 1;
-    setCurrentPage(nextPage);
-
     const appUserId = localStorage.getItem('appUserId');
     if (!appUserId) return;
 
+    const nextPage = currentPage + 1;
+    console.log('[Debug] Loading more messages:', { nextPage, currentFolder });
+    
     emitMailEvent.getFolder({
       appUserId,
       email: activeAccount.email,
@@ -518,214 +655,223 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex h-screen">
-      {/* Account Strip */}
-      <div className="w-16 bg-muted flex flex-col items-center py-4 border-r">
-        <div className="flex-1">
-          <TooltipProvider>
-            {linkedAccounts.map(account => (
-              <Tooltip key={account.email}>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <div className="flex h-screen">
+        {/* Account Strip */}
+        <div className="w-16 bg-muted flex flex-col items-center py-4 border-r">
+          <div className="flex-1">
+            <TooltipProvider>
+              {linkedAccounts.map(account => (
+                <Tooltip key={account.email}>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => setActiveAccount(account)}
+                      className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-all hover:scale-105 ${
+                        activeAccount?.email === account.email
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-background text-foreground hover:bg-accent'
+                      }`}
+                    >
+                      <ProviderIcon 
+                        provider={account.provider} 
+                        className="w-5 h-5"
+                      />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-[300px] break-all">
+                    <p className="flex items-center gap-2">
+                      <ProviderIcon 
+                        provider={account.provider} 
+                        className="w-4 h-4"
+                      />
+                      {account.email}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              ))}
+              <Tooltip>
                 <TooltipTrigger asChild>
                   <button
-                    onClick={() => setActiveAccount(account)}
-                    className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-all hover:scale-105 ${
-                      activeAccount?.email === account.email
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-background text-foreground hover:bg-accent'
-                    }`}
+                    onClick={handleAddAccount}
+                    className="w-10 h-10 rounded-full flex items-center justify-center bg-background text-foreground hover:bg-accent mt-2 transition-all hover:scale-105"
                   >
-                    <ProviderIcon 
-                      provider={account.provider} 
-                      className="w-5 h-5"
-                    />
+                    <IoMdAdd className="w-6 h-6" />
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side="right" className="max-w-[300px] break-all">
+                <TooltipContent side="right">
                   <p className="flex items-center gap-2">
-                    <ProviderIcon 
-                      provider={account.provider} 
-                      className="w-4 h-4"
-                    />
-                    {account.email}
+                    <IoMdAdd className="w-4 h-4" />
+                    Add new account
                   </p>
                 </TooltipContent>
               </Tooltip>
-            ))}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={handleAddAccount}
-                  className="w-10 h-10 rounded-full flex items-center justify-center bg-background text-foreground hover:bg-accent mt-2 transition-all hover:scale-105"
-                >
-                  <IoMdAdd className="w-6 h-6" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                <p className="flex items-center gap-2">
-                  <IoMdAdd className="w-4 h-4" />
-                  Add new account
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-
-        <div className="space-y-4">
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
-                  <FaUser className="w-5 h-5" />
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="right" className="flex flex-col gap-1">
-                <p className="font-medium">Logged in as:</p>
-                <p className="text-sm  break-all">{userEmail}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  onClick={handleLogout}
-                  variant="ghost"
-                  size="icon"
-                  className="w-10 h-10 rounded-full hover:bg-destructive hover:text-destructive-foreground transition-all hover:scale-105"
-                >
-                  <IoMdLogOut className="w-5 h-5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right">
-                <p className="flex items-center gap-2">
-                  <IoMdLogOut className="w-4 h-4" />
-                  Logout
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-      </div>
-
-      {/* Folders */}
-      <div className="w-64 border-r p-4">
-        {/* AI-Enhanced View Button */}
-        <Button 
-          variant="outline" 
-          className="w-full mb-4 flex items-center justify-center gap-2"
-          onClick={() => router.push('/mail')}
-        >
-          <Sparkles className="h-4 w-4" />
-          AI-Enhanced View
-        </Button>
-
-        <div className="space-y-2">
-          {folders.map(folder => (
-            <button
-              key={folder.id}
-              onClick={() => handleFolderClick(folder.id)}
-              className={`w-full rounded p-2 text-left hover:bg-accent ${
-                currentFolder === folder.id ? 'bg-accent' : ''
-              }`}
-            >
-              {folder.displayName}
-              {folder.unreadItemCount > 0 && (
-                <span className="ml-2 rounded bg-primary px-2 py-1 text-xs text-primary-foreground">
-                  {folder.unreadItemCount}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-auto p-4">
-        {isLoading ? (
-          <div className="flex h-full items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </TooltipProvider>
           </div>
-        ) : (
-          <>
-            {messages.map((message) => (
-              <Link 
-                href={`/email/${message.id}`} 
-                key={`message-${message.id}`}
-                onClick={() => {
-                  if (activeAccount) {
-                    localStorage.setItem('activeEmail', activeAccount.email)
-                  }
-                }}
-              >
-                <Card 
-                  className={`mb-4 p-4 cursor-pointer relative hover:bg-accent/50 group ${
-                    !message.read ? 'border-l-4 border-primary' : ''
-                  }`}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <div className="font-semibold flex items-center gap-2">
-                        {message.from}
-                        {message.important && (
-                          <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                        )}
-                      </div>
-                      <div className="text-lg">{message.subject}</div>
-                      <div className="mt-2 text-muted-foreground line-clamp-2">{message.preview}</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="text-sm text-muted-foreground">
-                        {new Date(message.timestamp).toLocaleString()}
-                      </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button 
-                            variant="ghost" 
-                            size="icon"
-                            className="opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                            <span className="sr-only">Open menu</span>
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {!message.read && (
-                            <DropdownMenuItem onClick={() => handleMarkAsRead(message.id)}>
-                              Mark as Read
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem onClick={() => handleMarkAsImportant(message.id)}>
-                            {message.important ? 'Remove Important' : 'Mark as Important'}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
+
+          <div className="space-y-4">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
+                    <FaUser className="w-5 h-5" />
                   </div>
-                </Card>
-              </Link>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="flex flex-col gap-1">
+                  <p className="font-medium">Logged in as:</p>
+                  <p className="text-sm  break-all">{userEmail}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={handleLogout}
+                    variant="ghost"
+                    size="icon"
+                    className="w-10 h-10 rounded-full hover:bg-destructive hover:text-destructive-foreground transition-all hover:scale-105"
+                  >
+                    <IoMdLogOut className="w-5 h-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p className="flex items-center gap-2">
+                    <IoMdLogOut className="w-4 h-4" />
+                    Logout
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+        </div>
+
+        {/* Folders */}
+        <div className="w-64 border-r p-4">
+          {/* AI-Enhanced View Button */}
+          <Button 
+            variant="outline" 
+            className="w-full mb-4 flex items-center justify-center gap-2"
+            onClick={() => router.push('/mail')}
+          >
+            <Sparkles className="h-4 w-4" />
+            AI-Enhanced View
+          </Button>
+
+          <div className="space-y-2">
+            {folders.map(folder => (
+              <button
+                key={folder.id}
+                onClick={() => handleFolderClick(folder.id)}
+                className={`w-full rounded p-2 text-left hover:bg-accent ${
+                  currentFolder === folder.id ? 'bg-accent' : ''
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{folder.displayName}</span>
+                    {folder.unreadItemCount > 0 && (
+                      <Counter
+                        value={folder.unreadItemCount}
+                        className="bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded-full"
+                      />
+                    )}
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    <Counter
+                      value={folder.totalItemCount || 0}
+                      className="text-muted-foreground"
+                    />
+                  </span>
+                </div>
+              </button>
             ))}
-            
-            {hasMoreMessages && (
-              <div className="mt-4 flex justify-center">
-                <Button 
-                  onClick={handleLoadMore}
-                  disabled={isLoadingMore}
-                  variant="outline"
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto h-full p-4">
+          {isLoadingMessages ? (
+            <EmailListSkeleton />
+          ) : messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+              <p>No messages in this folder</p>
+            </div>
+          ) : (
+            <div className="divide-y h-full">
+              {messages.map((message) => (
+                <Link 
+                  href={`/email/${message.id}`} 
+                  key={`message-${message.id}`}
+                  onClick={(e) => handleEmailClick(message, e)}
                 >
-                  {isLoadingMore ? 'Loading...' : 'Load More Messages'}
-                </Button>
-              </div>
-            )}
-            
-            {!isLoading && messages.length === 0 && (
-              <div className="text-center text-muted-foreground mt-8">
-                No messages in this folder
-              </div>
-            )}
-          </>
-        )}
+                  <Card 
+                    className={`mb-4 p-4 cursor-pointer relative hover:bg-accent/50 group ${
+                      !message.read ? 'border-l-4 border-primary' : ''
+                    }`}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="font-semibold flex items-center gap-2">
+                          {message.from}
+                          {message.important && (
+                            <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                          )}
+                        </div>
+                        <div className="text-lg">{message.subject}</div>
+                        <div className="mt-2 text-muted-foreground line-clamp-2">{message.preview}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm text-muted-foreground">
+                          {new Date(message.timestamp).toLocaleString()}
+                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button 
+                              variant="ghost" 
+                              size="icon"
+                              className="opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                              <span className="sr-only">Open menu</span>
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {!message.read && (
+                              <DropdownMenuItem onClick={(e) => {
+                                handleEmailClick(message, e);
+                                handleMarkAsRead(message.id);
+                              }}>
+                                Mark as Read
+                              </DropdownMenuItem>
+                            )}
+                            <DropdownMenuItem onClick={(e) => handleToggleImportant(message, e)}>
+                              {message.important ? 'Remove Important' : 'Mark as Important'}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+                  </Card>
+                </Link>
+              ))}
+              
+              {hasMoreMessages && (
+                <div className="mt-4 flex justify-center">
+                  <Button 
+                    onClick={handleLoadMore}
+                    disabled={isLoadingMore}
+                    variant="outline"
+                  >
+                    {isLoadingMore ? 'Loading...' : 'Load More Messages'}
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
+      <ComposeFAB />
     </div>
   )
 }

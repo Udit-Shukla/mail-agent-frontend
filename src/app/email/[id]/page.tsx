@@ -11,7 +11,8 @@ import {
   ChevronLeft,
   Mail, 
 } from 'lucide-react'
-import { initializeSocket, disconnectSocket, setSocketEventHandler, emitMailEvent } from '@/lib/socket'
+import { useSocket } from '@/contexts/SocketContext'
+import { emitMailEvent } from '@/lib/socket'
 
 interface EmailDetails {
   id: string;
@@ -36,266 +37,150 @@ interface EmailDetails {
   }>;
 }
 
-export default function EmailDetailsPage() {
-  const router = useRouter()
-  const params = useParams()
-  const [formattedTime, setFormattedTime] = useState('')
-  const [email, setEmail] = useState<EmailDetails | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+export default function EmailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const [email, setEmail] = useState<EmailDetails | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const { socket, isConnected, addEventHandler, removeEventHandler } = useSocket();
 
   useEffect(() => {
-    if (email?.timestamp) {
-      const localTime = new Date(email.timestamp).toLocaleString()
-      setFormattedTime(localTime)
+    const messageId = params.id as string;
+    const appUserId = localStorage.getItem('appUserId');
+    const activeEmail = localStorage.getItem('activeEmail');
+
+    if (!appUserId || !activeEmail) {
+      console.log('[Debug] Missing required data, redirecting to home');
+      router.push('/');
+      return;
     }
-  }, [email?.timestamp, email?.id])
 
-  useEffect(() => {
-    let mounted = true
-    const appUserId = localStorage.getItem('appUserId')
-    const activeEmail = localStorage.getItem('activeEmail')
-
-    const setupSocket = () => {
-      if (!appUserId || !activeEmail) {
-        console.error('Missing required data:', { appUserId, activeEmail })
-        toast.error('Connection error')
-        return false
+    const handleEmailContent = (details: EmailDetails) => {
+      console.log('[Debug] Received email content:', details.id);
+      if (details.id === messageId) {
+        console.log('[Debug] Content received for current email');
+        setEmail(details);
+        setIsLoading(false);
       }
+    };
 
-      initializeSocket(appUserId, activeEmail)
+    const handleError = (error: string) => {
+      console.error('[Debug] Email content error:', error);
+      toast.error(error);
+      setIsLoading(false);
+    };
 
-      // Set up event handlers
-      setSocketEventHandler('mail:message', (details: EmailDetails) => {
-        if (mounted) {
-          console.log('Received email details:', details)
-          setEmail(details)
-          setIsLoading(false)
+    // Add socket event handlers
+    addEventHandler('mail:message', handleEmailContent);
+    addEventHandler('mail:error', handleError);
 
-          // Always mark email as read when loaded
-          const appUserId = localStorage.getItem('appUserId')
-          const activeEmail = localStorage.getItem('activeEmail')
-          if (appUserId && activeEmail) {
-            emitMailEvent.markRead({
-              appUserId,
-              email: activeEmail,
-              messageId: details.id
-            })
-          }
-        }
-      })
-
-      setSocketEventHandler('mail:markedRead', (messageId) => {
-        if (mounted && email?.id === messageId) {
-          setEmail(prev => prev ? { ...prev, read: true } : null)
-        }
-      })
-
-      setSocketEventHandler('mail:error', (error) => {
-        console.error('Email fetch error:', error)
-        if (mounted) {
-          toast.error(error)
-          setIsLoading(false)
-        }
-      })
-
-      // Request email details
-      console.log('Requesting email details:', { messageId: params.id, activeEmail })
+    // If socket is already connected, fetch the email
+    if (isConnected) {
+      console.log('[Debug] Socket connected, fetching email content');
       emitMailEvent.getMessage({
         appUserId,
         email: activeEmail,
-        messageId: params.id as string
-      })
-
-      return true
+        messageId
+      });
+    } else {
+      console.log('[Debug] Socket not connected, waiting for connection...');
     }
-
-    setupSocket()
 
     return () => {
-      mounted = false
-      disconnectSocket()
-    }
-  }, [params.id])
-
-  const handleBack = () => {
-    router.push('/dashboard')
-  }
-
-//   const handleReply = () => {
-//     toast.info('Reply feature coming soon')
-//   }
-
-//   const handleReplyAll = () => {
-//     toast.info('Reply All feature coming soon')
-//   }
-
-//   const handleForward = () => {
-//     toast.info('Forward feature coming soon')
-//   }
-
-//   const handleDelete = () => {
-//     toast.info('Delete feature coming soon')
-//   }
-
-//   const handleArchive = () => {
-//     toast.info('Archive feature coming soon')
-//   }
-
-//   const handleToggleImportant = () => {
-//     if (!email) return
-
-//     const appUserId = localStorage.getItem('appUserId')
-//     const activeEmail = localStorage.getItem('activeEmail')
-
-//     if (!appUserId || !activeEmail) return
-
-//     emitMailEvent.markImportant({
-//       appUserId,
-//       email: activeEmail,
-//       messageId: email.id,
-//       flag: !email.important
-//     })
-
-//     setEmail(prev => prev ? { ...prev, important: !prev.important } : null)
-//   }
+      // Clean up event handlers
+      removeEventHandler('mail:message', handleEmailContent);
+      removeEventHandler('mail:error', handleError);
+    };
+  }, [params.id, router, socket, isConnected, addEventHandler, removeEventHandler]);
 
   if (isLoading) {
     return (
-      <div className="h-full p-6 space-y-8">
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-10 w-32" />
-          <Skeleton className="h-10 w-64" />
+      <div className="container mx-auto p-4">
+        <div className="flex items-center gap-4 mb-6">
+          <Button variant="ghost" size="icon" onClick={() => router.back()}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Skeleton className="h-6 w-1/3" />
         </div>
-        <Skeleton className="h-24 w-full" />
-        <Skeleton className="h-96 w-full" />
+        <div className="space-y-4">
+          <Skeleton className="h-8 w-1/4" />
+          <Skeleton className="h-4 w-1/2" />
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-4 w-2/3" />
+          <Separator className="my-4" />
+          <Skeleton className="h-32 w-full" />
+        </div>
       </div>
-    )
+    );
   }
 
   if (!email) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <Mail className="h-12 w-12 mx-auto text-muted-foreground" />
-          <h2 className="text-2xl font-semibold">Email Not Found</h2>
-          <p className="text-muted-foreground">This email may have been moved or deleted.</p>
-          <Button onClick={handleBack}>Go Back</Button>
+      <div className="container mx-auto p-4">
+        <div className="flex items-center gap-4 mb-6">
+          <Button variant="ghost" size="icon" onClick={() => router.back()}>
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <h1 className="text-2xl font-semibold">Email not found</h1>
         </div>
       </div>
-    )
+    );
   }
 
   return (
-    <div className="h-full p-6 space-y-1">
-      <div className="flex items-center justify-between">
-       
-        {/* <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={handleReply}>
-            <Reply className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={handleReplyAll}>
-            <ReplyAll className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={handleForward}>
-            <Forward className="h-4 w-4" />
-          </Button>
-          <Separator orientation="vertical" className="h-6" />
-          <Button variant="ghost" size="icon" onClick={handleArchive}>
-            <Archive className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={handleDelete}>
-            <Trash2 className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleToggleImportant}
-            className={email?.important ? 'text-yellow-500' : ''}
-          >
-            <Star className="h-4 w-4" />
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={handleReply}>Reply</DropdownMenuItem>
-              <DropdownMenuItem onClick={handleReplyAll}>Reply All</DropdownMenuItem>
-              <DropdownMenuItem onClick={handleForward}>Forward</DropdownMenuItem>
-              <DropdownMenuItem onClick={handleArchive}>Archive</DropdownMenuItem>
-              <DropdownMenuItem onClick={handleDelete} className="text-destructive">
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div> */}
+    <div className="container mx-auto p-4">
+      <div className="flex items-center gap-4 mb-6">
+        <Button variant="ghost" size="icon" onClick={() => router.back()}>
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <h1 className="text-2xl font-semibold">{email.subject}</h1>
       </div>
 
-      <div className="space-y-2">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={handleBack}>
-          <ChevronLeft className="h-6 w-6" />
-        </Button>
-           <div>
-           <h1 className="text-2xl font-semibold">{email?.subject}</h1>
-            <div className="mt-2 flex items-center gap-2 text-muted-foreground">
-              <Avatar>
-                <div className="h-full w-full flex items-center justify-center bg-primary text-primary-foreground">
-                  <Mail className="h-4 w-4" />
-                </div>
-              </Avatar>
+      <div className="space-y-4">
+        <div className="flex items-start gap-4">
+          <Avatar className="h-10 w-10">
+            <Mail className="h-6 w-6" />
+          </Avatar>
+          <div className="flex-1">
+            <div className="flex items-center justify-between">
               <div>
-                <div>{email?.from}</div>
-                {/* <div className="text-sm">To: {email?.to}</div> */}
-                {email?.cc && <div className="text-sm">Cc: {email?.cc}</div>}
+                <p className="font-medium">{email.from}</p>
+                <p className="text-sm text-muted-foreground">To: {email.to}</p>
+                {email.cc && (
+                  <p className="text-sm text-muted-foreground">Cc: {email.cc}</p>
+                )}
               </div>
+              <p className="text-sm text-muted-foreground">
+                {new Date(email.timestamp).toLocaleString()}
+              </p>
             </div>
-           </div>
-          </div>
-          <div className="text-sm text-muted-foreground">
-            {formattedTime}
           </div>
         </div>
 
-        <Separator />
+        <Separator className="my-4" />
 
-        <div className="prose prose-sm max-w-none">
-          <div dangerouslySetInnerHTML={{ __html: email?.content || '' }} />
-        </div>
+        <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: email.content }} />
 
-        {/* {email?.attachments && email.attachments.length > 0 && (
-          <>
-            <Separator />
-            <div className="space-y-2">
-              <h2 className="text-lg font-semibold">Attachments</h2>
-              <div className="grid gap-2">
-                {email.attachments.map((attachment) => (
-                  <div
-                    key={attachment.id}
-                    className="flex items-center justify-between rounded-lg border p-2"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Download className="h-4 w-4" />
-                      <div>
-                        <div>{attachment.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {(attachment.size / 1024).toFixed(1)} KB
-                        </div>
-                      </div>
-                    </div>
-                    <Button variant="ghost" size="sm">
-                      Download
-                    </Button>
-                  </div>
-                ))}
-              </div>
+        {email.attachments && email.attachments.length > 0 && (
+          <div className="mt-6">
+            <h3 className="text-lg font-medium mb-2">Attachments</h3>
+            <div className="grid gap-2">
+              {email.attachments.map((attachment) => (
+                <div
+                  key={attachment.id}
+                  className="flex items-center gap-2 p-2 border rounded-lg"
+                >
+                  <Mail className="h-4 w-4" />
+                  <span className="text-sm">{attachment.name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    ({(attachment.size / 1024).toFixed(1)} KB)
+                  </span>
+                </div>
+              ))}
             </div>
-          </>
-        )} */}
+          </div>
+        )}
       </div>
     </div>
-  )
+  );
 } 

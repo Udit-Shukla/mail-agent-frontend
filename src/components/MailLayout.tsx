@@ -8,6 +8,7 @@ import { IoMdAdd, IoMdLogOut } from 'react-icons/io';
 import { FaUser } from 'react-icons/fa';
 import { SiGmail } from 'react-icons/si';
 import { PiMicrosoftOutlookLogoDuotone } from "react-icons/pi";
+import { ComposeFAB } from '@/components/ComposeFAB';
 
 const ProviderIcon = ({ provider, className }: { provider: Provider, className?: string }) => {
   if (provider === 'outlook') {
@@ -221,6 +222,7 @@ export function MailLayout({ children }: MailLayoutProps) {
       <div className="flex-1 flex">
         {children}
       </div>
+      <ComposeFAB />
     </div>
   );
 } 

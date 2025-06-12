@@ -1,18 +1,25 @@
 'use client'
 
-import React, { createContext, useContext, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { initializeSocket, disconnectSocket } from '@/lib/socket';
 import { toast } from 'sonner';
+import { Socket } from 'socket.io-client';
+
+type SocketEventHandler = (...args: any[]) => void;
 
 interface SocketContextType {
-  socket: ReturnType<typeof initializeSocket> | null;
+  socket: Socket | null;
   isConnected: boolean;
+  addEventHandler: (event: string, handler: SocketEventHandler) => void;
+  removeEventHandler: (event: string, handler: SocketEventHandler) => void;
 }
 
 const SocketContext = createContext<SocketContextType>({
   socket: null,
   isConnected: false,
+  addEventHandler: () => {},
+  removeEventHandler: () => {},
 });
 
 export function useSocket() {
@@ -21,11 +28,25 @@ export function useSocket() {
 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const socketRef = useRef<ReturnType<typeof initializeSocket> | null>(null);
+  const socketRef = useRef<Socket | null>(null);
   const [isConnected, setIsConnected] = React.useState(false);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const retryCountRef = useRef(0);
   const maxRetries = 3;
+  const eventHandlersRef = useRef<Map<string, Set<SocketEventHandler>>>(new Map());
+
+  // Function to add event handlers
+  const addEventHandler = useCallback((event: string, handler: SocketEventHandler) => {
+    if (!eventHandlersRef.current.has(event)) {
+      eventHandlersRef.current.set(event, new Set());
+    }
+    eventHandlersRef.current.get(event)?.add(handler);
+  }, []);
+
+  // Function to remove event handlers
+  const removeEventHandler = useCallback((event: string, handler: SocketEventHandler) => {
+    eventHandlersRef.current.get(event)?.delete(handler);
+  }, []);
 
   useEffect(() => {
     const appUserId = localStorage.getItem('appUserId');
@@ -44,8 +65,18 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
 
     const initSocket = () => {
       console.log('[Debug] SocketContext: Initializing socket connection...');
+      
+      // Clean up existing socket if it exists
+      if (socketRef.current) {
+        console.log('[Debug] SocketContext: Cleaning up existing socket...');
+        socketRef.current.removeAllListeners();
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+
       socketRef.current = initializeSocket(appUserId, activeEmail);
 
+      // Set up core socket event handlers
       socketRef.current.on('connect', () => {
         console.log('[Debug] SocketContext: Socket connected successfully');
         setIsConnected(true);
@@ -59,7 +90,6 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         console.log('[Debug] SocketContext: Socket disconnected:', reason);
         setIsConnected(false);
 
-        // Only attempt to reconnect if it wasn't a client-side disconnect
         if (reason !== 'io client disconnect') {
           console.log('[Debug] SocketContext: Attempting to reconnect...');
           reconnectTimeoutRef.current = setTimeout(() => {
@@ -102,6 +132,22 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
           }
         }, retryDelay);
       });
+
+      // Set up event forwarding
+      const events = [
+        'mail:folders', 'mail:folderMessages', 'mail:message', 'mail:sent',
+        'mail:markedRead', 'mail:importantMarked', 'mail:error', 'mail:promptDateRange',
+        'mail:new', 'mail:syncComplete', 'mail:enrichmentStatus'
+      ];
+
+      events.forEach(event => {
+        socketRef.current?.on(event, (...args: any[]) => {
+          const handlers = eventHandlersRef.current.get(event);
+          if (handlers) {
+            handlers.forEach(handler => handler(...args));
+          }
+        });
+      });
     };
 
     initSocket();
@@ -112,8 +158,14 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
+      if (socketRef.current) {
+        socketRef.current.removeAllListeners();
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+      eventHandlersRef.current.clear();
     };
-  }, [router]);
+  }, []);
 
   // Handle email changes
   useEffect(() => {
@@ -133,8 +185,15 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
+  const value = {
+    socket: socketRef.current,
+    isConnected,
+    addEventHandler,
+    removeEventHandler
+  };
+
   return (
-    <SocketContext.Provider value={{ socket: socketRef.current, isConnected }}>
+    <SocketContext.Provider value={value}>
       {children}
     </SocketContext.Provider>
   );
