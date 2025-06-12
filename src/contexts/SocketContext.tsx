@@ -6,6 +6,7 @@ import { initializeSocket, disconnectSocket } from '@/lib/socket';
 import { toast } from 'sonner';
 import { Socket } from 'socket.io-client';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SocketEventHandler = (...args: any[]) => void;
 
 interface SocketContextType {
@@ -141,6 +142,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       ];
 
       events.forEach(event => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         socketRef.current?.on(event, (...args: any[]) => {
           const handlers = eventHandlersRef.current.get(event);
           if (handlers) {
