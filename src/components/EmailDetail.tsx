@@ -389,7 +389,7 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
               {showOriginal ? 'Hide Original Email' : 'Show Original Email'}
             </button>
             {showOriginal && (
-              <div className="prose prose-sm max-w-none bg-gray-200 rounded p-4 border mt-2 overflow-x-auto">
+              <div className="prose prose-sm max-w-none rounded p-4 border mt-2 overflow-x-auto bg-gray-200 dark:bg-gray-700">
                 {/* Render as HTML if available, fallback to plain text */}
                 {emailContent ? (
                   <div dangerouslySetInnerHTML={{ __html: emailContent }} />
@@ -401,19 +401,19 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
 
                 {/* Attachments Section */}
                 {emailAttachments && Array.isArray(emailAttachments) && emailAttachments.length > 0 && (
-                  <div className="mt-6 bg-gray-100 rounded p-4 border border-gray-300">
-                    <h3 className="text-lg font-medium mb-2 text-gray-900">Attachments ({emailAttachments.length})</h3>
+                  <div className="mt-6 bg-gray-100 rounded p-4 border border-border dark:bg-gray-700">
+                    <h3 className="text-lg font-medium mb-2 text-foreground">Attachments ({emailAttachments.length})</h3>
                     <div className="grid gap-2">
                       {emailAttachments.map((attachment) => (
                         <div
                           key={attachment.id}
-                          className="flex items-center justify-between p-3 border border-gray-300 rounded-lg bg-white "
+                          className="flex items-center justify-between p-3 border border-border rounded-lg bg-white dark:bg-gray-700"
                         >
                           <div className="flex items-center gap-3">
                             <File className="h-5 w-5 text-gray-600" />
                             <div className="flex flex-col">
-                              <span className="text-sm font-medium text-gray-900">{attachment.name}</span>
-                              <span className="text-xs text-gray-600">
+                              <span className="text-sm font-medium text-foreground">{attachment.name}</span>
+                              <span className="text-xs text-muted-foreground">
                                 {(attachment.size / 1024).toFixed(1)} KB
                               </span>
                             </div>
@@ -446,8 +446,8 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
                             }}
                             className="flex items-center gap-2 text-gray-700 hover:text-gray-900"
                           >
-                            <Download className="h-4 w-4" />
-                            Download
+                            <Download className="h-4 w-4 text-foreground" />
+                            <span className="text-foreground">Download</span>
                           </Button>
                         </div>
                       ))}
