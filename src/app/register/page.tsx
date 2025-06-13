@@ -65,8 +65,8 @@ export default function RegisterPage() {
       Cookies.set('appUserId', appUserId, { path: '/', sameSite: 'Lax' })
 
       toast.dismiss()
-      toast.success('Account created successfully!')
-      router.push('/dashboard')
+      toast.success('Account created successfully! Please sign in to continue.')
+      router.push('/login')
     } catch (err) {
       toast.dismiss()
       const error = err as AxiosError<{ error: string }>
@@ -80,7 +80,10 @@ export default function RegisterPage() {
     <div className="min-h-screen flex items-center justify-center bg-background">
       <Card className="w-[400px] shadow-xl">
         <CardHeader>
-          <CardTitle className="text-center">Create Account</CardTitle>
+          <div className="text-center space-y-2">
+            <CardTitle>Join WorxStream</CardTitle>
+            <p className="text-sm text-muted-foreground">Create your Mail Agent account and access the WorxStream ecosystem</p>
+          </div>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -129,6 +132,16 @@ export default function RegisterPage() {
               </Button>
             </form>
           </Form>
+          <div className="text-center text-sm text-muted-foreground mt-4">
+            Already have an account?{' '}
+            <Button
+              variant="link"
+              className="p-0 h-auto font-normal"
+              onClick={() => router.push('/login')}
+            >
+              Sign in
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

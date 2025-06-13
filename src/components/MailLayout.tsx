@@ -1,14 +1,15 @@
 'use client'
 import React, { useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Account, Provider } from '@/lib/types';
 import { IoMdAdd, IoMdLogOut } from 'react-icons/io';
-import { FaUser } from 'react-icons/fa';
 import { SiGmail } from 'react-icons/si';
 import { PiMicrosoftOutlookLogoDuotone } from "react-icons/pi";
 import { ComposeFAB } from '@/components/ComposeFAB';
+import { ThemeToggle } from '@/components/theme-toggle';
+import { toast } from 'sonner';
+import { FaUser } from 'react-icons/fa';
 
 const ProviderIcon = ({ provider, className }: { provider: Provider, className?: string }) => {
   if (provider === 'outlook') {
@@ -25,10 +26,9 @@ export function MailLayout({ children }: MailLayoutProps) {
   const router = useRouter();
   const [linkedAccounts, setLinkedAccounts] = React.useState<Account[]>([]);
   const [activeAccount, setActiveAccount] = React.useState<Account | null>(null);
-  const [userEmail, setUserEmail] = React.useState<string>('');
+  const [userEmail, setUserEmail] = React.useState('');
 
-  // Fetch linked accounts
-  const fetchLinkedAccounts = useCallback(async (setDefault = true) => {
+  const fetchLinkedAccounts = useCallback(async () => {
     try {
       const appUserId = localStorage.getItem('appUserId');
       if (!appUserId) {
@@ -36,94 +36,57 @@ export function MailLayout({ children }: MailLayoutProps) {
         return;
       }
 
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/account/accounts?appUserId=${appUserId}`);
-      if (!res.ok) throw new Error(`API returned ${res.status}`);
-      const data = await res.json();
-      const apiAccounts = data.accounts || [];
-
-      setLinkedAccounts(apiAccounts);
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/account/accounts?appUserId=${appUserId}`);
+      if (!response.ok) throw new Error('Failed to fetch accounts');
+      const data = await response.json();
+      const accounts = data.accounts || [];
       
-      if (apiAccounts.length > 0 && setDefault) {
-        setActiveAccount(apiAccounts[0]);
+      setLinkedAccounts(accounts);
+      if (accounts.length > 0 && !activeAccount) {
+        setActiveAccount(accounts[0]);
       }
     } catch (error) {
-      console.error('Failed to fetch accounts:', error);
+      console.error('Error fetching accounts:', error);
+      toast.error('Failed to load accounts');
     }
+  }, [router, activeAccount]);
+
+  // Set user email from localStorage when component mounts
+  React.useEffect(() => {
+    const email = localStorage.getItem('userEmail');
+    if (email) {
+      setUserEmail(email);
+    }
+  }, []);
+
+  const handleAccountSwitch = useCallback((account: Account) => {
+    setActiveAccount(account);
+  }, []);
+
+  const handleAddAccount = useCallback(() => {
+    router.push('/dashboard');
   }, [router]);
 
-  // Handle account switching
-  const handleAccountSwitch = (account: Account) => {
-    setActiveAccount(account);
-    localStorage.setItem('activeEmail', account.email);
-    // Refresh the current page to reinitialize with new account
-    router.refresh();
-  };
-
-  const handleAddAccount = () => {
-    const appUserId = localStorage.getItem('appUserId');
-    if (!appUserId) {
-      router.push('/');
-      return;
-    }
-
-    // Open the OAuth window in a popup
-    const width = 600;
-    const height = 700;
-    const left = window.screenX + (window.outerWidth - width) / 2;
-    const top = window.screenY + (window.outerHeight - height) / 2;
-
-    // Create the OAuth URL with callback
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-    const callbackUrl = `${window.location.origin}/auth/callback`;
-    const authUrl = `${apiUrl}/auth/outlook/login?appUserId=${appUserId}&callbackUrl=${encodeURIComponent(callbackUrl)}`;
-
-    // Clear any existing popup poll timer
-    if (window.addAccountPollTimer) {
-      clearInterval(window.addAccountPollTimer);
-    }
-
-    // Open popup and handle messaging
-    const popup = window.open(
-      authUrl,
-      'Add Outlook Account',
-      `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`
-    );
-
-    // Check if popup was blocked
-    if (!popup) {
-      console.error('Please allow popups to add a new account');
-      return;
-    }
-
-    // Focus the popup
-    popup.focus();
-
-    // Poll for popup close
-    window.addAccountPollTimer = setInterval(() => {
-      if (popup.closed) {
-        clearInterval(window.addAccountPollTimer);
-        delete window.addAccountPollTimer;
-        fetchLinkedAccounts(false);
-      }
-    }, 500);
-  };
-
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
+    // Clear all local storage
     localStorage.removeItem('appUserId');
     localStorage.removeItem('accounts');
     localStorage.removeItem('linkedAccounts');
     localStorage.removeItem('userEmail');
     localStorage.removeItem('token');
-    
+
+    // Clear the authentication cookie
     document.cookie = 'appUserId=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-    
+
+    // Show success message
+    toast.success('Logged out successfully');
+
+    // Redirect to landing page
     router.push('/');
-  };
+  }, [router]);
 
   React.useEffect(() => {
-    const email = localStorage.getItem('userEmail');
-    if (email) setUserEmail(email);
     fetchLinkedAccounts();
   }, [fetchLinkedAccounts]);
 
@@ -181,6 +144,7 @@ export function MailLayout({ children }: MailLayoutProps) {
         </div>
 
         <div className="space-y-4">
+          <ThemeToggle />
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -194,18 +158,15 @@ export function MailLayout({ children }: MailLayoutProps) {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
+                <button
                   onClick={handleLogout}
-                  variant="ghost"
-                  size="icon"
-                  className="w-10 h-10 rounded-full hover:bg-destructive hover:text-destructive-foreground transition-all hover:scale-105"
+                  className="w-10 h-10 rounded-full flex items-center justify-center bg-background text-foreground hover:bg-accent transition-all hover:scale-105"
                 >
                   <IoMdLogOut className="w-5 h-5" />
-                </Button>
+                </button>
               </TooltipTrigger>
               <TooltipContent side="right">
                 <p className="flex items-center gap-2">
@@ -217,11 +178,12 @@ export function MailLayout({ children }: MailLayoutProps) {
           </TooltipProvider>
         </div>
       </div>
-
+      
       {/* Main Content */}
-      <div className="w-full">
+      <div className="flex-1 overflow-hidden">
         {children}
       </div>
+      
       <ComposeFAB />
     </div>
   );

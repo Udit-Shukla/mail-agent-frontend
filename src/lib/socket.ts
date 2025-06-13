@@ -52,6 +52,7 @@ type SocketEventHandlers = {
   'mail:promptDateRange': () => void;
   'mail:new': (message: MailMessage) => void;
   'mail:syncComplete': () => void;
+  'mail:deleted': (data: { messageId: string }) => void;
   'mail:enrichmentStatus': (data: { 
     messageId: string; 
     status: 'queued' | 'analyzing' | 'completed' | 'error';
@@ -227,6 +228,11 @@ export const initializeSocket = (appUserId: string, email?: string): Socket => {
       eventHandlers['mail:syncComplete']?.();
     });
 
+    socket.on('mail:deleted', (data: { messageId: string }) => {
+      console.log('📄 Message deleted:', data.messageId);
+      eventHandlers['mail:deleted']?.(data);
+    });
+
     socket.on('mail:enrichmentStatus', (data: { 
       messageId: string; 
       status: 'queued' | 'analyzing' | 'completed' | 'error';
@@ -291,5 +297,11 @@ export const emitMailEvent = {
   },
   retryEnrichment: (data: { appUserId: string; email: string; messageId: string }) => {
     socket?.emit('mail:retryEnrichment', data);
+  },
+  enrichEmails: (data: { appUserId: string; email: string; messageIds: string[] }) => {
+    socket?.emit('mail:enrichEmails', data);
+  },
+  deleteMessage: (data: { appUserId: string; email: string; messageId: string }) => {
+    socket?.emit('mail:delete', data);
   }
 };

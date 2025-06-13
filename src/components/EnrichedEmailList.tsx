@@ -162,12 +162,36 @@ export function EnrichedEmailList() {
     };
 
     // Listen for enrichment events
-    socket.on('mail:enrichmentUpdate', handleEnrichmentUpdate);
+    socket.on('mail:enrichmentStatus', handleEnrichmentUpdate);
 
     return () => {
-      socket.off('mail:enrichmentUpdate', handleEnrichmentUpdate);
+      socket.off('mail:enrichmentStatus', handleEnrichmentUpdate);
     };
   }, [socket, selectedEmail]);
+
+  // Request enrichment for loaded emails
+  React.useEffect(() => {
+    if (!socket || !emails.length) return;
+
+    const appUserId = localStorage.getItem('appUserId');
+    const activeEmail = localStorage.getItem('activeEmail');
+    
+    if (!appUserId || !activeEmail) return;
+
+    // Get IDs of unenriched emails
+    const unenrichedIds = emails
+      .filter(email => !email.aiMeta?.enrichedAt)
+      .map(email => email.id);
+
+    if (unenrichedIds.length > 0) {
+      console.log('🔄 Requesting enrichment for', unenrichedIds.length, 'emails');
+      emitMailEvent.enrichEmails({
+        appUserId,
+        email: activeEmail,
+        messageIds: unenrichedIds
+      });
+    }
+  }, [socket, emails]);
 
   // Handle initial email loading
   React.useEffect(() => {
@@ -431,7 +455,7 @@ export function EnrichedEmailList() {
       </div>
 
       {/* Email Detail */}
-      <div className="w-3/5 h-full overflow-y-auto bg-card border-l border-border flex items-center justify-center">
+      <div className="w-3/5 h-full overflow-y-auto bg-card border-l border-border flex items-center">
         {selectedEmail ? (
           <EmailDetail 
             email={selectedEmail} 

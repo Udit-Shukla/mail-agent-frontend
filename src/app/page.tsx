@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { SiGmail } from 'react-icons/si'
 import { PiMicrosoftOutlookLogoDuotone } from 'react-icons/pi'
 import { IoMdMail } from 'react-icons/io'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 export default function LandingPage() {
   const router = useRouter()
@@ -17,9 +18,10 @@ export default function LandingPage() {
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center gap-2">
             <IoMdMail className="h-6 w-6 text-primary" />
-            <span className="font-semibold text-lg">Mail Agent</span>
+            <span className="font-semibold text-lg">Mail Agent by WorxStream</span>
           </div>
           <div className="flex items-center gap-4">
+            <ThemeToggle />
             <Button variant="ghost" onClick={() => router.push('/login')}>
               Login
             </Button>
@@ -37,10 +39,10 @@ export default function LandingPage() {
             <IoMdMail className="h-12 w-12 text-primary" />
           </div>
           <h1 className="text-4xl font-bold tracking-tighter sm:text-5xl md:text-6xl">
-            Mail Agent
+            Mail Agent by WorxStream
           </h1>
           <p className="max-w-[600px] text-lg text-muted-foreground sm:text-xl">
-            Your intelligent email companion. Connect multiple email accounts and manage them all in one place.
+            Your intelligent email companion powered by WorxStream. Connect multiple email accounts and manage them all in one place.
           </p>
           <div className="flex gap-4">
             <Button size="lg" onClick={() => router.push('/register')}>
@@ -114,6 +116,31 @@ export default function LandingPage() {
                   strokeLinejoin="round"
                   strokeWidth={2}
                   d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                />
+              </svg>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Part of WorxStream Ecosystem</CardTitle>
+              <CardDescription>
+                Seamlessly integrate with other WorxStream tools and services for a complete productivity solution.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex justify-center">
+              <svg
+                className="h-8 w-8"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 10V3L4 14h7v7l9-11h-7z"
                 />
               </svg>
             </CardContent>

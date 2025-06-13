@@ -147,6 +147,11 @@ class MailCache {
       };
     }
   }
+
+  clearMessage(email: string, messageId: string): void {
+    const key = `${email}:${messageId}`;
+    delete this.cache.messages[key];
+  }
 }
 
 export const mailCache = MailCache.getInstance(); 

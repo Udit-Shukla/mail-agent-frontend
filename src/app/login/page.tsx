@@ -72,7 +72,10 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background">
       <Card className="w-[400px] shadow-xl">
         <CardHeader>
-          <CardTitle className="text-center">Login</CardTitle>
+          <div className="text-center space-y-2">
+            <CardTitle>Welcome Back</CardTitle>
+            <p className="text-sm text-muted-foreground">Sign in to your Mail Agent by WorxStream account</p>
+          </div>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -108,6 +111,16 @@ export default function LoginPage() {
               </Button>
             </form>
           </Form>
+          <div className="text-center text-sm text-muted-foreground mt-4">
+            Don't have an account?{' '}
+            <Button
+              variant="link"
+              className="p-0 h-auto font-normal"
+              onClick={() => router.push('/register')}
+            >
+              Create one now
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

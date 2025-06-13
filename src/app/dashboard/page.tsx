@@ -9,11 +9,12 @@ import { mailCache } from '@/lib/cache'
 import { MailFolder, MailMessage, Account, Provider } from '@/lib/types'
 import { toast } from 'sonner'
 import { LoadingScreen } from '@/components/LoadingScreen'
-import { MoreVertical, Star, Sparkles } from 'lucide-react'
+import { MoreVertical, Star, Sparkles, Trash2, CheckCircle2 } from 'lucide-react'
 import { SiGmail} from 'react-icons/si'
 import { PiMicrosoftOutlookLogoDuotone } from "react-icons/pi";
 import { IoMdAdd, IoMdLogOut } from 'react-icons/io'
 import { FaUser } from 'react-icons/fa'
+import { ThemeToggle } from '@/components/theme-toggle'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,6 +33,7 @@ import { useSocket } from '@/contexts/SocketContext'
 import { ComposeFAB } from '@/components/ComposeFAB'
 import { Skeleton } from "@/components/ui/skeleton"
 import { Counter } from "@/components/ui/counter";
+import { cn } from "@/lib/utils";
 
 
 // Extend Window interface to include our custom property
@@ -476,9 +478,6 @@ export default function DashboardPage() {
         messageId: email.id
       });
     }
-
-    // Navigate to email detail page
-    router.push(`/email/${email.id}`);
   };
 
   const handleToggleImportant = async (email: MailMessage, event: React.MouseEvent) => {
@@ -613,6 +612,68 @@ export default function DashboardPage() {
     setShowSetupWizard(false)
   }
 
+  const handleDelete = async (email: MailMessage, event: React.MouseEvent) => {
+    // Prevent the click from bubbling up to the email row
+    event.stopPropagation();
+    
+    if (!confirm('Are you sure you want to delete this email?')) {
+      return;
+    }
+
+    const appUserId = localStorage.getItem('appUserId');
+    if (!appUserId || !activeAccount) return;
+    
+    try {
+      emitMailEvent.deleteMessage({
+        appUserId,
+        email: activeAccount.email,
+        messageId: email.id
+      });
+
+      // Optimistically update UI
+      setMessages(prev => prev.filter(msg => msg.id !== email.id));
+    } catch (error) {
+      console.error('Failed to delete email:', error);
+      toast.error('Failed to delete email');
+    }
+  };
+
+  // Listen for delete confirmation
+  useEffect(() => {
+    if (!socket || !isConnected) return;
+
+    const handleDeleted = (data: { messageId: string }) => {
+      // Remove the message from the list
+      setMessages(prev => prev.filter(msg => msg.id !== data.messageId));
+      
+      // Update folder counts
+      setFolders(prev => prev.map(folder => {
+        const messageInFolder = messages.find(m => m.id === data.messageId && m.folder === folder.id);
+        if (messageInFolder) {
+          return {
+            ...folder,
+            totalItemCount: Math.max(0, (folder.totalItemCount || 0) - 1),
+            unreadItemCount: messageInFolder.read ? folder.unreadItemCount : Math.max(0, (folder.unreadItemCount || 0) - 1)
+          };
+        }
+        return folder;
+      }));
+      
+      // Clear the message from cache
+      if (activeAccount) {
+        mailCache.clearMessage(activeAccount.email, data.messageId);
+      }
+      
+      toast.success('Email deleted successfully');
+    };
+
+    socket.on('mail:deleted', handleDeleted);
+
+    return () => {
+      socket.off('mail:deleted', handleDeleted);
+    };
+  }, [socket, isConnected]);
+
   // Show setup wizard for new users
   if (showSetupWizard) {
     return <SetupWizard onAddAccount={handleAddAccount} onSkip={handleSkipSetup} />
@@ -709,6 +770,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="space-y-4">
+            <ThemeToggle />
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -804,6 +866,7 @@ export default function DashboardPage() {
                   href={`/email/${message.id}`} 
                   key={`message-${message.id}`}
                   onClick={(e) => handleEmailClick(message, e)}
+                  className="block"
                 >
                   <Card 
                     className={`mb-4 p-4 cursor-pointer relative hover:bg-accent/50 group ${
@@ -842,11 +905,23 @@ export default function DashboardPage() {
                                 handleEmailClick(message, e);
                                 handleMarkAsRead(message.id);
                               }}>
+                                <CheckCircle2 className="h-4 w-4 mr-2" />
                                 Mark as Read
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuItem onClick={(e) => handleToggleImportant(message, e)}>
+                              <Star className={cn(
+                                "h-4 w-4 mr-2",
+                                message.important && "fill-yellow-400 text-yellow-400"
+                              )} />
                               {message.important ? 'Remove Important' : 'Mark as Important'}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={(e) => handleDelete(message, e)}
+                              className="text-red-500 focus:text-red-500"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
