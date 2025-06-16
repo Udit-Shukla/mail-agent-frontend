@@ -52,8 +52,16 @@ export default function LoginPage() {
       localStorage.setItem('token', res.data.token)
       localStorage.setItem('appUserId', res.data.appUserId)
       localStorage.setItem('userEmail', values.email)
-      Cookies.set('token', res.data.token, { path: '/', sameSite: 'Lax' })
-      Cookies.set('appUserId', res.data.appUserId, { path: '/', sameSite: 'Lax' })
+      Cookies.set('token', res.data.token, { 
+        path: '/', 
+        sameSite: 'none',
+        secure: true
+      })
+      Cookies.set('appUserId', res.data.appUserId, { 
+        path: '/', 
+        sameSite: 'none',
+        secure: true
+      })
       
       toast.dismiss()
       toast.success('Welcome back!')

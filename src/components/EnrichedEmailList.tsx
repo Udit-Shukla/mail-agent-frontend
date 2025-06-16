@@ -5,7 +5,7 @@ import { EmailDetail } from '@/components/EmailDetail';
 import { emitMailEvent } from '@/lib/socket';
 import { useSocket } from '@/contexts/SocketContext';
 import { Sparkles, AlertCircle, Clock, ArrowLeft, Filter } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 
 interface EmailMeta {
@@ -67,6 +67,7 @@ const getCategoryStyle = () => {
 };
 
 const CATEGORIES = [
+  'All',
   'Work',
   'Personal',
   'Finance',
@@ -79,7 +80,9 @@ const CATEGORIES = [
   'Other'
 ] as const;
 
-const PRIORITIES = ['urgent', 'high', 'medium', 'low'] as const;
+const PRIORITIES = ['All', 'urgent', 'high', 'medium', 'low'] as const;
+
+const SENTIMENTS = ['All', 'positive', 'negative', 'neutral'] as const;
 
 // Add EmailSkeleton component
 const EmailSkeleton = () => (
@@ -102,6 +105,7 @@ const EmailSkeleton = () => (
 
 export function EnrichedEmailList() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { socket, isConnected } = useSocket();
   const [selectedEmail, setSelectedEmail] = React.useState<EnrichedEmail | null>(null);
   const [emails, setEmails] = React.useState<EnrichedEmail[]>([]);
@@ -111,7 +115,64 @@ export function EnrichedEmailList() {
   const [isLoadingMore, setIsLoadingMore] = React.useState(false);
   const [selectedCategory, setSelectedCategory] = React.useState<string | null>(null);
   const [selectedPriority, setSelectedPriority] = React.useState<string | null>(null);
+  const [selectedSentiment, setSelectedSentiment] = React.useState<string | null>(null);
   const [showFilters, setShowFilters] = React.useState(false);
+
+  // Handle URL parameters for filters
+  React.useEffect(() => {
+    const category = searchParams.get('category');
+    const priority = searchParams.get('priority');
+    const sentiment = searchParams.get('sentiment');
+
+    if (category) {
+      setSelectedCategory(category);
+      setShowFilters(true);
+    }
+    if (priority) {
+      setSelectedPriority(priority);
+      setShowFilters(true);
+    }
+    if (sentiment) {
+      setSelectedSentiment(sentiment);
+      setShowFilters(true);
+    }
+  }, [searchParams]);
+
+  // Load more emails when category is selected and no results are found
+  React.useEffect(() => {
+    if (selectedCategory && !isLoading && !isLoadingMore) {
+      const hasMatchingEmails = emails.some(email => email.aiMeta?.category === selectedCategory);
+      if (!hasMatchingEmails && hasMore) {
+        loadMoreEmails();
+      }
+    }
+  }, [selectedCategory, emails, isLoading, isLoadingMore, hasMore]);
+
+  const loadMoreEmails = async () => {
+    if (!socket || !isConnected || isLoadingMore || !hasMore) return;
+
+    const appUserId = localStorage.getItem('appUserId');
+    const activeEmail = localStorage.getItem('activeEmail');
+    
+    if (!appUserId || !activeEmail) return;
+
+    setIsLoadingMore(true);
+    const nextPage = currentPage + 1;
+
+    try {
+      emitMailEvent.getFolder({
+        appUserId,
+        email: activeEmail,
+        folderId: 'Inbox',
+        page: nextPage
+      });
+      setCurrentPage(nextPage);
+    } catch (error) {
+      console.error('Error loading more emails:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   // Handle real-time enrichment updates
   React.useEffect(() => {
@@ -218,10 +279,16 @@ export function EnrichedEmailList() {
       });
       setHasMore(!!data.nextLink);
       setIsLoading(false);
-      setIsLoadingMore(false); // Reset loading more state
+      setIsLoadingMore(false);
     };
 
     socket.on('mail:folderMessages', handleFolderMessages);
+
+    // Reset state when loading new folder
+    setCurrentPage(1);
+    setHasMore(true);
+    setIsLoading(true);
+    setEmails([]);
 
     // Fetch inbox messages
     emitMailEvent.getFolder({
@@ -279,7 +346,7 @@ export function EnrichedEmailList() {
   };
 
   const handleBackToClassic = () => {
-    router.push('/dashboard');
+    router.push('/emailList');
   };
 
   const getEnrichmentStatus = (email: EnrichedEmail) => {
@@ -294,11 +361,12 @@ export function EnrichedEmailList() {
 
   const filteredEmails = React.useMemo(() => {
     return emails.filter(email => {
-      const matchesCategory = !selectedCategory || email.aiMeta?.category === selectedCategory;
-      const matchesPriority = !selectedPriority || email.aiMeta?.priority === selectedPriority;
-      return matchesCategory && matchesPriority;
+      const matchesCategory = !selectedCategory || selectedCategory === 'All' || email.aiMeta?.category === selectedCategory;
+      const matchesPriority = !selectedPriority || selectedPriority === 'All' || email.aiMeta?.priority === selectedPriority;
+      const matchesSentiment = !selectedSentiment || selectedSentiment === 'All' || email.aiMeta?.sentiment === selectedSentiment;
+      return matchesCategory && matchesPriority && matchesSentiment;
     });
-  }, [emails, selectedCategory, selectedPriority]);
+  }, [emails, selectedCategory, selectedPriority, selectedSentiment]);
 
   return (
     <div className="flex h-full bg-background">
@@ -325,35 +393,60 @@ export function EnrichedEmailList() {
           
           {/* Filter Options */}
           {showFilters && (
-            <div className="space-y-2 mt-2">
-              {/* Category Filter */}
+            <div className="space-y-4 mt-4">
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Category</label>
-                <select
-                  value={selectedCategory || ''}
-                  onChange={(e) => setSelectedCategory(e.target.value || null)}
-                  className="w-full text-sm bg-background border border-border rounded-md px-2 py-1"
-                >
-                  <option value="">All Categories</option>
+                <label className="text-sm font-medium mb-2 block">Category</label>
+                <div className="flex flex-wrap gap-2">
                   {CATEGORIES.map(category => (
-                    <option key={category} value={category}>{category}</option>
+                    <button
+                      key={category}
+                      onClick={() => setSelectedCategory(selectedCategory === category ? null : category)}
+                      className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                        selectedCategory === category
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-secondary/20 text-secondary-foreground hover:bg-secondary/30'
+                      }`}
+                    >
+                      {category}
+                    </button>
                   ))}
-                </select>
+                </div>
               </div>
-              
-              {/* Priority Filter */}
               <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Priority</label>
-                <select
-                  value={selectedPriority || ''}
-                  onChange={(e) => setSelectedPriority(e.target.value || null)}
-                  className="w-full text-sm bg-background border border-border rounded-md px-2 py-1"
-                >
-                  <option value="">All Priorities</option>
+                <label className="text-sm font-medium mb-2 block">Priority</label>
+                <div className="flex flex-wrap gap-2">
                   {PRIORITIES.map(priority => (
-                    <option key={priority} value={priority}>{priority}</option>
+                    <button
+                      key={priority}
+                      onClick={() => setSelectedPriority(selectedPriority === priority ? null : priority)}
+                      className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                        selectedPriority === priority
+                          ? getPriorityStyle(priority)
+                          : 'bg-secondary/20 text-secondary-foreground hover:bg-secondary/30'
+                      }`}
+                    >
+                      {priority}
+                    </button>
                   ))}
-                </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-2 block">Sentiment</label>
+                <div className="flex flex-wrap gap-2">
+                  {SENTIMENTS.map(sentiment => (
+                    <button
+                      key={sentiment}
+                      onClick={() => setSelectedSentiment(selectedSentiment === sentiment ? null : sentiment)}
+                      className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                        selectedSentiment === sentiment
+                          ? getSentimentStyle(sentiment)
+                          : 'bg-secondary/20 text-secondary-foreground hover:bg-secondary/30'
+                      }`}
+                    >
+                      {sentiment}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -365,93 +458,89 @@ export function EnrichedEmailList() {
             Array.from({ length: 10 }).map((_, i) => (
               <EmailSkeleton key={i} />
             ))
-          ) : (
-            filteredEmails.map((email) => {
-              const { icon, text } = getEnrichmentStatus(email);
-              return (
-                <div
-                  key={email.id}
-                  onClick={() => handleEmailClick(email)}
-                  className={`p-4 cursor-pointer hover:bg-accent/50 transition-colors ${
-                    selectedEmail?.id === email.id ? 'bg-accent' : ''
-                  }`}
-                >
-                  <div className="flex flex-col">
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-card-foreground truncate">
-                          {email.from.split('<')[0]}
-                        </p>
-                        {email.aiMeta?.priority && (
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${getPriorityStyle(email.aiMeta.priority)}`}>
-                            {email.aiMeta.priority}
-                          </span>
-                        )}
-                        {email.aiMeta?.category && (
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${getCategoryStyle()}`}>
-                            {email.aiMeta.category}
-                          </span>
-                        )}
-                        {email.aiMeta?.sentiment && (
-                          <span className={`text-xs ${getSentimentStyle(email.aiMeta.sentiment)}`}>
-                            {email.aiMeta.sentiment}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(email.timestamp).toLocaleTimeString()}
-                      </p>
-                    </div>
-                    <p className="text-sm font-semibold text-card-foreground mb-2">
-                      {email.subject}
-                    </p>
-                    <div className="flex items-center gap-1.5">
-                      <div className="flex-shrink-0">
-                        {icon}
-                      </div>
-                      <p className="text-sm text-muted-foreground italic line-clamp-2 flex-1">
-                        {text}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-        
-        {/* Load More Button */}
-        {hasMore && (
-          <div className="p-4 text-center">
-            <button
-              onClick={() => {
-                setIsLoadingMore(true);
-                const appUserId = localStorage.getItem('appUserId');
-                const activeEmail = localStorage.getItem('activeEmail');
-                if (appUserId && activeEmail) {
-                  emitMailEvent.getFolder({
-                    appUserId,
-                    email: activeEmail,
-                    folderId: 'Inbox',
-                    page: currentPage + 1
-                  });
-                  setCurrentPage(prev => prev + 1);
-                }
-              }}
-              disabled={isLoadingMore}
-              className="text-sm text-primary hover:text-primary/80 disabled:opacity-50"
-            >
+          ) : filteredEmails.length === 0 ? (
+            <div className="p-4 text-center text-muted-foreground">
               {isLoadingMore ? (
                 <div className="flex items-center justify-center gap-2">
-                  <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                  Loading...
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent" />
+                  <span>Loading more emails...</span>
                 </div>
               ) : (
-                'Load More'
+                <p>No emails found in this category</p>
               )}
-            </button>
-          </div>
-        )}
+            </div>
+          ) : (
+            <>
+              {filteredEmails.map(email => {
+                const { icon, text } = getEnrichmentStatus(email);
+                return (
+                  <div
+                    key={email.id}
+                    onClick={() => handleEmailClick(email)}
+                    className={`p-4 cursor-pointer hover:bg-accent/50 transition-colors ${
+                      selectedEmail?.id === email.id ? 'bg-accent' : ''
+                    }`}
+                  >
+                    <div className="flex flex-col">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-card-foreground truncate">
+                            {email.from.split('<')[0]}
+                          </p>
+                          {email.aiMeta?.priority && (
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${getPriorityStyle(email.aiMeta.priority)}`}>
+                              {email.aiMeta.priority}
+                            </span>
+                          )}
+                          {email.aiMeta?.category && (
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${getCategoryStyle()}`}>
+                              {email.aiMeta.category}
+                            </span>
+                          )}
+                          {email.aiMeta?.sentiment && (
+                            <span className={`text-xs ${getSentimentStyle(email.aiMeta.sentiment)}`}>
+                              {email.aiMeta.sentiment}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(email.timestamp).toLocaleTimeString()}
+                        </p>
+                      </div>
+                      <p className="text-sm font-semibold text-card-foreground mb-2">
+                        {email.subject}
+                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <div className="flex-shrink-0">
+                          {icon}
+                        </div>
+                        <p className="text-sm text-muted-foreground italic line-clamp-2 flex-1">
+                          {text}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {hasMore && (
+                <button
+                  onClick={loadMoreEmails}
+                  disabled={isLoadingMore}
+                  className="w-full p-4 text-center text-sm text-muted-foreground hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isLoadingMore ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent" />
+                      <span>Loading more...</span>
+                    </div>
+                  ) : (
+                    'Load More'
+                  )}
+                </button>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Email Detail */}

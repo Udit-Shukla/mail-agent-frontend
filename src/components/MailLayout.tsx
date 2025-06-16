@@ -1,6 +1,6 @@
 'use client'
 import React, { useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Account, Provider } from '@/lib/types';
 import { IoMdAdd, IoMdLogOut } from 'react-icons/io';
@@ -10,6 +10,7 @@ import { ComposeFAB } from '@/components/ComposeFAB';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { toast } from 'sonner';
 import { FaUser } from 'react-icons/fa';
+import { Sparkles, BarChart2 } from 'lucide-react';
 
 const ProviderIcon = ({ provider, className }: { provider: Provider, className?: string }) => {
   if (provider === 'outlook') {
@@ -24,6 +25,7 @@ interface MailLayoutProps {
 
 export function MailLayout({ children }: MailLayoutProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const [linkedAccounts, setLinkedAccounts] = React.useState<Account[]>([]);
   const [activeAccount, setActiveAccount] = React.useState<Account | null>(null);
   const [userEmail, setUserEmail] = React.useState('');
@@ -86,6 +88,14 @@ export function MailLayout({ children }: MailLayoutProps) {
     router.push('/');
   }, [router]);
 
+  const handleViewToggle = useCallback(() => {
+    if (pathname === '/mail') {
+      router.push('/dashboard');
+    } else {
+      router.push('/mail');
+    }
+  }, [router, pathname]);
+
   React.useEffect(() => {
     fetchLinkedAccounts();
   }, [fetchLinkedAccounts]);
@@ -144,6 +154,37 @@ export function MailLayout({ children }: MailLayoutProps) {
         </div>
 
         <div className="space-y-4">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleViewToggle}
+                  className="w-10 h-10 rounded-full flex items-center justify-center bg-background text-foreground hover:bg-accent transition-all hover:scale-105"
+                >
+                  {pathname === '/mail' ? (
+                    <BarChart2 className="w-5 h-5" />
+                  ) : (
+                    <Sparkles className="w-5 h-5" />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p className="flex items-center gap-2">
+                  {pathname === '/mail' ? (
+                    <>
+                      <BarChart2 className="w-4 h-4" />
+                      Switch to Analytics
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      Switch to AI View
+                    </>
+                  )}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <ThemeToggle />
           <TooltipProvider>
             <Tooltip>
