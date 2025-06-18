@@ -1,23 +1,42 @@
 "use client"
 
-import * as React from "react"
-import { useSpring, animated } from "@react-spring/web"
+import { useEffect, useState } from 'react'
+import { useInView } from 'react-intersection-observer'
 
-interface CounterProps extends React.HTMLAttributes<HTMLSpanElement> {
+interface CounterProps {
   value: number
+  duration?: number
+  className?: string
 }
 
-export function Counter({ value, className, ...props }: CounterProps) {
-  const { number } = useSpring({
-    from: { number: 0 },
-    number: value,
-    delay: 200,
-    config: { mass: 1, tension: 20, friction: 10 },
+export function Counter({ value, duration = 1000, className }: CounterProps) {
+  const [count, setCount] = useState(0)
+  const { ref, inView } = useInView({
+    triggerOnce: true,
+    threshold: 0.1,
   })
 
+  useEffect(() => {
+    if (inView) {
+      let start = 0
+      const end = value
+      const incrementTime = duration / end
+      
+      const timer = setInterval(() => {
+        start += 1
+        setCount(start)
+        if (start >= end) {
+          clearInterval(timer)
+        }
+      }, incrementTime)
+
+      return () => clearInterval(timer)
+    }
+  }, [inView, value, duration])
+
   return (
-    <animated.span className={className} {...props}>
-      {number.to((n) => Math.round(n))}
-    </animated.span>
+    <span ref={ref} className={className}>
+      {count}
+    </span>
   )
 } 

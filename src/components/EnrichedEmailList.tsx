@@ -6,6 +6,8 @@ import { emitMailEvent } from '@/lib/socket';
 import { useSocket } from '@/contexts/SocketContext';
 import { Sparkles, AlertCircle, Clock, ArrowLeft, Filter } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { getCategories, type Category } from "@/lib/api/categories"
+import { toast } from "sonner";
 
 
 interface EmailMeta {
@@ -66,22 +68,7 @@ const getCategoryStyle = () => {
   return 'bg-secondary/20 text-secondary-foreground';
 };
 
-const CATEGORIES = [
-  'All',
-  'Work',
-  'Personal',
-  'Finance',
-  'Shopping',
-  'Travel',
-  'Social',
-  'Newsletter',
-  'Marketing',
-  'Important Documents',
-  'Other'
-] as const;
-
 const PRIORITIES = ['All', 'urgent', 'high', 'medium', 'low'] as const;
-
 const SENTIMENTS = ['All', 'positive', 'negative', 'neutral'] as const;
 
 // Add EmailSkeleton component
@@ -117,6 +104,21 @@ export function EnrichedEmailList() {
   const [selectedPriority, setSelectedPriority] = React.useState<string | null>(null);
   const [selectedSentiment, setSelectedSentiment] = React.useState<string | null>(null);
   const [showFilters, setShowFilters] = React.useState(false);
+  const [categories, setCategories] = React.useState<Category[]>([]);
+
+  // Fetch categories on component mount
+  React.useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const userCategories = await getCategories();
+        setCategories(userCategories);
+      } catch (error) {
+        console.error('Error fetching categories:', error);
+        toast.error('Failed to load categories');
+      }
+    };
+    fetchCategories();
+  }, []);
 
   // Handle URL parameters for filters
   React.useEffect(() => {
@@ -275,7 +277,10 @@ export function EnrichedEmailList() {
         if (data.page === 1) {
           return data.messages;
         }
-        return [...prevEmails, ...data.messages];
+        // Deduplicate emails by ID to prevent duplicates
+        const existingIds = new Set(prevEmails.map(email => email.id));
+        const newEmails = data.messages.filter(email => !existingIds.has(email.id));
+        return [...prevEmails, ...newEmails];
       });
       setHasMore(!!data.nextLink);
       setIsLoading(false);
@@ -397,17 +402,29 @@ export function EnrichedEmailList() {
               <div>
                 <label className="text-sm font-medium mb-2 block">Category</label>
                 <div className="flex flex-wrap gap-2">
-                  {CATEGORIES.map(category => (
+                  <button
+                    key="All"
+                    onClick={() => setSelectedCategory(selectedCategory === 'All' ? null : 'All')}
+                    className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                      selectedCategory === 'All'
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary/20 text-secondary-foreground hover:bg-secondary/30'
+                    }`}
+                  >
+                    All
+                  </button>
+                  {categories.map(category => (
                     <button
-                      key={category}
-                      onClick={() => setSelectedCategory(selectedCategory === category ? null : category)}
+                      key={category.name}
+                      onClick={() => setSelectedCategory(selectedCategory === category.name ? null : category.name)}
                       className={`px-3 py-1 rounded-full text-sm transition-colors ${
-                        selectedCategory === category
+                        selectedCategory === category.name
                           ? 'bg-primary text-primary-foreground'
                           : 'bg-secondary/20 text-secondary-foreground hover:bg-secondary/30'
                       }`}
+                      style={{ backgroundColor: selectedCategory === category.name ? undefined : category.color + '20' }}
                     >
-                      {category}
+                      {category.name}
                     </button>
                   ))}
                 </div>

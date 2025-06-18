@@ -11,6 +11,12 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { toast } from 'sonner';
 import { FaUser } from 'react-icons/fa';
 import { Sparkles, BarChart2 } from 'lucide-react';
+import { SetupWizard } from '@/components/SetupWizard';
+import { LoadingScreen } from '@/components/LoadingScreen';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { CategoryModal } from "@/components/CategoryModal";
+import { getCategories, updateCategories, type Category } from "@/lib/api/categories";
 
 const ProviderIcon = ({ provider, className }: { provider: Provider, className?: string }) => {
   if (provider === 'outlook') {
@@ -29,6 +35,10 @@ export function MailLayout({ children }: MailLayoutProps) {
   const [linkedAccounts, setLinkedAccounts] = React.useState<Account[]>([]);
   const [activeAccount, setActiveAccount] = React.useState<Account | null>(null);
   const [userEmail, setUserEmail] = React.useState('');
+  const [showSetupWizard, setShowSetupWizard] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = React.useState(false);
+  const [userCategories, setUserCategories] = React.useState<Category[]>([]);
 
   const fetchLinkedAccounts = useCallback(async () => {
     try {
@@ -38,20 +48,36 @@ export function MailLayout({ children }: MailLayoutProps) {
         return;
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/account/accounts?appUserId=${appUserId}`);
-      if (!response.ok) throw new Error('Failed to fetch accounts');
-      const data = await response.json();
-      const accounts = data.accounts || [];
-      
-      setLinkedAccounts(accounts);
-      if (accounts.length > 0 && !activeAccount) {
-        setActiveAccount(accounts[0]);
+      setIsLoading(true);
+
+      try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/account/accounts?appUserId=${appUserId}`);
+        if (!response.ok) throw new Error('Failed to fetch accounts');
+        const data = await response.json();
+        const accounts = data.accounts || [];
+        
+        setLinkedAccounts(accounts);
+        if (accounts.length > 0) {
+          setActiveAccount(accounts[0]);
+          localStorage.setItem('activeEmail', accounts[0].email);
+          setShowSetupWizard(false);
+        } else {
+          setShowSetupWizard(true);
+        }
+      } catch (error) {
+        console.error('Error fetching accounts:', error);
+        toast.error('Failed to load accounts');
+        setShowSetupWizard(true);
       }
+
+      setIsLoading(false);
     } catch (error) {
-      console.error('Error fetching accounts:', error);
+      console.error('Error initializing accounts:', error);
       toast.error('Failed to load accounts');
+      setIsLoading(false);
+      setShowSetupWizard(true);
     }
-  }, [router, activeAccount]);
+  }, [router]);
 
   // Set user email from localStorage when component mounts
   React.useEffect(() => {
@@ -66,8 +92,85 @@ export function MailLayout({ children }: MailLayoutProps) {
   }, []);
 
   const handleAddAccount = useCallback(() => {
-    router.push('/dashboard');
-  }, [router]);
+    const appUserId = localStorage.getItem('appUserId')
+    if (!appUserId) {
+      router.push('/')
+      return
+    }
+
+    // Open the OAuth window in a popup
+    const width = 600
+    const height = 700
+    const left = window.screenX + (window.outerWidth - width) / 2
+    const top = window.screenY + (window.outerHeight - height) / 2
+
+    // Create the OAuth URL with callback
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+    const callbackUrl = `${window.location.origin}/auth/callback`
+    const authUrl = `${apiUrl}/auth/outlook/login?appUserId=${appUserId}&callbackUrl=${encodeURIComponent(callbackUrl)}`
+
+    // Clear any existing popup poll timer
+    if (window.addAccountPollTimer) {
+      clearInterval(window.addAccountPollTimer)
+    }
+
+    // Open popup and handle messaging
+    const popup = window.open(
+      authUrl,
+      'Add Outlook Account',
+      `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`
+    )
+
+    // Check if popup was blocked
+    if (!popup) {
+      toast.error('Please allow popups to add a new account')
+      return
+    }
+
+    // Focus the popup
+    popup.focus()
+
+    // Poll for popup close
+    window.addAccountPollTimer = setInterval(async () => {
+      if (popup.closed) {
+        clearInterval(window.addAccountPollTimer)
+        delete window.addAccountPollTimer
+        
+        // Refresh accounts list
+        await fetchLinkedAccounts()
+        
+        // If we have accounts now, show the category modal
+        if (linkedAccounts.length > 0) {
+          try {
+            const categories = await getCategories()
+            setUserCategories(categories)
+            setIsCategoryModalOpen(true)
+          } catch (error) {
+            console.error('Error fetching categories:', error)
+            toast.error('Failed to load categories')
+          }
+        }
+      }
+    }, 500)
+  }, [router, fetchLinkedAccounts, linkedAccounts.length]);
+
+  const handleSaveCategories = async (categories: Category[]) => {
+    try {
+      const updatedCategories = await updateCategories(categories)
+      setUserCategories(updatedCategories)
+      toast.success('Categories updated successfully')
+      setIsCategoryModalOpen(false)
+      // Show setup wizard after categories are saved
+      setShowSetupWizard(true)
+    } catch (error) {
+      console.error('Error updating categories:', error)
+      toast.error('Failed to update categories')
+    }
+  };
+
+  const handleSkipSetup = useCallback(() => {
+    setShowSetupWizard(false);
+  }, []);
 
   const handleLogout = useCallback(() => {
     // Clear all local storage
@@ -96,9 +199,78 @@ export function MailLayout({ children }: MailLayoutProps) {
     }
   }, [router, pathname]);
 
+  // Add message event listener for auth callbacks
+  React.useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      // Verify the origin of the message
+      if (event.origin !== window.location.origin) return;
+
+      if (event.data.type === 'AUTH_SUCCESS') {
+        toast.success(`Successfully connected ${event.data.email}`);
+        // Refresh accounts list
+        await fetchLinkedAccounts();
+        // Show category modal
+        try {
+          const categories = await getCategories();
+          setUserCategories(categories);
+          setIsCategoryModalOpen(true);
+        } catch (error) {
+          console.error('Error fetching categories:', error);
+          toast.error('Failed to load categories');
+        }
+      } else if (event.data.type === 'AUTH_ERROR') {
+        toast.error(event.data.error);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [fetchLinkedAccounts]);
+
   React.useEffect(() => {
     fetchLinkedAccounts();
   }, [fetchLinkedAccounts]);
+
+  // Show setup wizard for new users
+  if (showSetupWizard) {
+    return <SetupWizard onAddAccount={handleAddAccount} onSkip={handleSkipSetup} />;
+  }
+
+  // Show loading screen when loading
+  if (isLoading) {
+    return <LoadingScreen />;
+  }
+
+  // Show empty state when no accounts are connected and setup was skipped
+  if (!activeAccount && !showSetupWizard) {
+    return (
+      <div className="flex h-screen">
+        <div className="w-16 bg-muted flex flex-col items-center py-4 border-r">
+          <Button
+            onClick={handleAddAccount}
+            size="icon"
+            className="rounded-full w-10 h-10 mb-2"
+          >
+            <IoMdAdd className="h-5 w-5" />
+          </Button>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <Card className="w-full max-w-md mx-4">
+            <CardHeader className="text-center">
+              <CardTitle>No Email Accounts Connected</CardTitle>
+              <CardDescription>Connect your first email account to start managing your emails</CardDescription>
+            </CardHeader>
+            <CardContent className="flex justify-center">
+              <Button onClick={handleAddAccount} className="flex items-center gap-2">
+                <IoMdAdd className="h-5 w-5" />
+                Add Account
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen">
@@ -189,13 +361,17 @@ export function MailLayout({ children }: MailLayoutProps) {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
+                <button
+                  onClick={() => router.push('/profile')}
+                  className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-all hover:scale-105"
+                >
                   <FaUser className="w-5 h-5" />
-                </div>
+                </button>
               </TooltipTrigger>
               <TooltipContent side="right" className="flex flex-col gap-1">
                 <p className="font-medium">Logged in as:</p>
                 <p className="text-sm break-all">{userEmail}</p>
+                {/* <p className="text-xs text-primary-foreground">Click to view profile</p> */}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -226,6 +402,13 @@ export function MailLayout({ children }: MailLayoutProps) {
       </div>
       
       <ComposeFAB />
+
+      <CategoryModal
+        isOpen={isCategoryModalOpen}
+        onClose={() => setIsCategoryModalOpen(false)}
+        onSave={handleSaveCategories}
+        initialCategories={userCategories}
+      />
     </div>
   );
 } 

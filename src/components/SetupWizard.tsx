@@ -2,6 +2,10 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { SiGmail } from 'react-icons/si'
 import { PiMicrosoftOutlookLogoDuotone } from 'react-icons/pi'
+import { useState } from 'react'
+import { CategoryModal } from "@/components/CategoryModal"
+import { type Category } from "@/lib/api/categories"
+import { toast } from "sonner"
 
 interface SetupWizardProps {
   onAddAccount: () => void;
@@ -9,6 +13,27 @@ interface SetupWizardProps {
 }
 
 export function SetupWizard({ onAddAccount, onSkip }: SetupWizardProps) {
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false)
+  const [categories, setCategories] = useState<Category[]>([])
+
+  const handleAddAccount = () => {
+    // Show category modal after account connection
+    setIsCategoryModalOpen(true)
+    onAddAccount()
+  }
+
+  const handleSaveCategories = async (updatedCategories: Category[]) => {
+    try {
+      setCategories(updatedCategories)
+      toast.success('Categories saved successfully')
+      setIsCategoryModalOpen(false)
+      onSkip() // Navigate to dashboard after saving categories
+    } catch (error) {
+      console.error('Error saving categories:', error)
+      toast.error('Failed to save categories')
+    }
+  }
+
   return (
     <div className="flex h-screen w-full items-center justify-center bg-background p-4">
       <Card className="w-full max-w-lg">
@@ -19,7 +44,7 @@ export function SetupWizard({ onAddAccount, onSkip }: SetupWizardProps) {
         <CardContent>
           <div className="flex flex-col gap-4">
             <Button
-              onClick={onAddAccount}
+              onClick={handleAddAccount}
               className="flex items-center justify-center gap-2 h-12"
               size="lg"
             >
@@ -48,6 +73,13 @@ export function SetupWizard({ onAddAccount, onSkip }: SetupWizardProps) {
           </div>
         </CardContent>
       </Card>
+
+      <CategoryModal
+        isOpen={isCategoryModalOpen}
+        onClose={() => setIsCategoryModalOpen(false)}
+        onSave={handleSaveCategories}
+        initialCategories={categories}
+      />
     </div>
   )
 } 

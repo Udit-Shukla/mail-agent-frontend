@@ -27,14 +27,24 @@ function AuthCallbackContent() {
       const errorDetails = searchParams.get('error_details')
 
       if (error) {
-        toast.error(errorDetails || 'Failed to connect account')
-        router.push('/dashboard')
+        if (window.opener) {
+          window.opener.postMessage({ type: 'AUTH_ERROR', error: errorDetails || 'Failed to connect account' }, window.location.origin)
+          window.close()
+        } else {
+          toast.error(errorDetails || 'Failed to connect account')
+          router.push('/dashboard')
+        }
         return
       }
 
       if (!appUserId || !provider || !email || success !== 'true') {
-        toast.error('Invalid callback parameters')
-        router.push('/dashboard')
+        if (window.opener) {
+          window.opener.postMessage({ type: 'AUTH_ERROR', error: 'Invalid callback parameters' }, window.location.origin)
+          window.close()
+        } else {
+          toast.error('Invalid callback parameters')
+          router.push('/dashboard')
+        }
         return
       }
 
@@ -74,20 +84,24 @@ function AuthCallbackContent() {
           console.log('✅ Saved account to local storage:', newAccount)
         }
 
-        toast.success(`Successfully connected ${email}`)
-        
-        // Close this window and refresh the dashboard
+        // Send success message to opener window and close this window
         if (window.opener) {
-          window.opener.location.reload()
+          window.opener.postMessage({ type: 'AUTH_SUCCESS', email }, window.location.origin)
           window.close()
         } else {
+          toast.success(`Successfully connected ${email}`)
           router.push('/dashboard')
         }
       } catch (err) {
         console.error('Auth callback error:', err)
         const error = err as AuthError
-        toast.error(error.message || 'Failed to complete authentication')
-        router.push('/dashboard')
+        if (window.opener) {
+          window.opener.postMessage({ type: 'AUTH_ERROR', error: error.message || 'Failed to complete authentication' }, window.location.origin)
+          window.close()
+        } else {
+          toast.error(error.message || 'Failed to complete authentication')
+          router.push('/dashboard')
+        }
       }
     }
 

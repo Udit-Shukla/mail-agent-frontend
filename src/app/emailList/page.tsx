@@ -34,6 +34,8 @@ import { ComposeFAB } from '@/components/ComposeFAB'
 import { Skeleton } from "@/components/ui/skeleton"
 import { Counter } from "@/components/ui/counter";
 import { cn } from "@/lib/utils";
+import { getCategories, updateCategories, type Category } from '@/lib/api/categories'
+import { CategoryModal } from '@/components/CategoryModal'
 
 
 // Extend Window interface to include our custom property
@@ -86,6 +88,9 @@ export default function DashboardPage() {
   const [userEmail, setUserEmail] = useState<string>('')
   const { socket, isConnected, addEventHandler, removeEventHandler } = useSocket()
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
+  const [userCategories, setUserCategories] = useState<Category[]>([])
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(true)
+  const [isInitialLoad, setIsInitialLoad] = useState(true)
 
   const fetchLinkedAccounts = useCallback(async (setDefault = true) => {
     try {
@@ -104,20 +109,14 @@ export default function DashboardPage() {
         const apiAccounts = data.accounts || []
 
         setLinkedAccounts(apiAccounts)
-        setShowSetupWizard(false) // Reset setup wizard state
         
         if (apiAccounts.length > 0 && setDefault) {
           setActiveAccount(apiAccounts[0])
           localStorage.setItem('activeEmail', apiAccounts[0].email)
-        } else if (apiAccounts.length === 0) {
-          // Only show setup wizard if explicitly no accounts
-          setShowSetupWizard(true)
         }
       } catch (error) {
         console.error('Failed to fetch accounts:', error)
         toast.error('Failed to load accounts')
-        // Don't show setup wizard on error, might be temporary
-        setShowSetupWizard(false)
       }
 
       setIsLoading(false)
@@ -401,10 +400,10 @@ export default function DashboardPage() {
     }
   }, [activeAccount, currentFolder]);
 
-  // Effect for fetching linked accounts
+  // Fetch accounts on mount
   useEffect(() => {
-    fetchLinkedAccounts();
-  }, [fetchLinkedAccounts]);
+    fetchLinkedAccounts()
+  }, [fetchLinkedAccounts])
 
   // Effect for setting active email in localStorage
   useEffect(() => {
@@ -420,7 +419,26 @@ export default function DashboardPage() {
       setUserEmail(email)
     }
     fetchLinkedAccounts()
-  }, [])
+  }, [fetchLinkedAccounts])
+
+  useEffect(() => {
+    // On initial load, show category modal for new users
+    if (isInitialLoad) {
+      const showCategoryModal = async () => {
+        try {
+          const categories = await getCategories()
+          setUserCategories(categories)
+          setIsCategoryModalOpen(true)
+          setShowSetupWizard(false)
+        } catch (error) {
+          console.error('Error fetching categories:', error)
+          toast.error('Failed to load categories')
+        }
+      }
+      showCategoryModal()
+      setIsInitialLoad(false)
+    }
+  }, [isInitialLoad])
 
   const handleFolderClick = (folderId: string) => {
     if (folderId === currentFolder) return;
@@ -674,7 +692,21 @@ export default function DashboardPage() {
     };
   }, [socket, isConnected]);
 
-  // Show setup wizard for new users
+  const handleSaveCategories = async (categories: Category[]) => {
+    try {
+      const updatedCategories = await updateCategories(categories)
+      setUserCategories(updatedCategories)
+      toast.success('Categories updated successfully')
+      setIsCategoryModalOpen(false)
+      // Show setup wizard only after categories are saved
+      setShowSetupWizard(true)
+    } catch (error) {
+      console.error('Error updating categories:', error)
+      toast.error('Failed to update categories')
+    }
+  }
+
+  // Show setup wizard only after categories are saved
   if (showSetupWizard) {
     return <SetupWizard onAddAccount={handleAddAccount} onSkip={handleSkipSetup} />
   }
@@ -690,7 +722,7 @@ export default function DashboardPage() {
       <div className="flex h-screen">
         <div className="w-16 bg-muted flex flex-col items-center py-4 border-r">
           <Button
-            onClick={handleAddAccount}
+            onClick={() => setIsCategoryModalOpen(true)}
             size="icon"
             className="rounded-full w-10 h-10 mb-2"
           >
@@ -704,15 +736,21 @@ export default function DashboardPage() {
               <CardDescription>Connect your first email account to start managing your emails</CardDescription>
             </CardHeader>
             <CardContent className="flex justify-center">
-              <Button onClick={handleAddAccount} className="flex items-center gap-2">
+              <Button onClick={() => setIsCategoryModalOpen(true)} className="flex items-center gap-2">
                 <IoMdAdd className="h-5 w-5" />
-                Add Account
+                Start Setup
               </Button>
             </CardContent>
           </Card>
         </div>
+        <CategoryModal
+          isOpen={isCategoryModalOpen}
+          onClose={() => setIsCategoryModalOpen(false)}
+          onSave={handleSaveCategories}
+          initialCategories={userCategories}
+        />
       </div>
-    )
+    );
   }
 
   return (
@@ -792,13 +830,17 @@ export default function DashboardPage() {
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
+                  <button
+                    onClick={() => router.push('/profile')}
+                    className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-all hover:scale-105"
+                  >
                     <FaUser className="w-5 h-5" />
-                  </div>
+                  </button>
                 </TooltipTrigger>
                 <TooltipContent side="right" className="flex flex-col gap-1">
                   <p className="font-medium">Logged in as:</p>
-                  <p className="text-sm  break-all">{userEmail}</p>
+                  <p className="text-sm break-all">{userEmail}</p>
+                  {/* <p className="text-xs text-primary-foreground">Click to view profile</p> */}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -965,6 +1007,12 @@ export default function DashboardPage() {
         </div>
       </div>
       <ComposeFAB />
+      <CategoryModal
+        isOpen={isCategoryModalOpen}
+        onClose={() => setIsCategoryModalOpen(false)}
+        onSave={handleSaveCategories}
+        initialCategories={userCategories}
+      />
     </div>
   )
 }

@@ -26,18 +26,20 @@ export interface EmailAnalyticsData {
   priority: AnalyticsItem[];
 }
 
-// Helper function to get auth headers
-const getAuthHeaders = () => {
-  const token = localStorage.getItem('token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-};
-
 export const getEmailStats = async (): Promise<EmailStats> => {
   try {
-    console.log('Fetching email stats with token:', localStorage.getItem('token')?.substring(0, 10) + '...');
+    const appUserId = localStorage.getItem('appUserId');
+    const token = localStorage.getItem('token');
+    if (!appUserId || !token) {
+      throw new Error('appUserId or token not found');
+    }
+
     const response = await axios.get(`${API_URL}/email-analytics/stats`, {
-      withCredentials: true,
-      headers: getAuthHeaders()
+      params: { appUserId },
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      withCredentials: true
     });
     return response.data;
   } catch (error) {
@@ -48,10 +50,18 @@ export const getEmailStats = async (): Promise<EmailStats> => {
 
 export const getEmailAnalytics = async (): Promise<EmailAnalyticsData> => {
   try {
-    console.log('Fetching email analytics with token:', localStorage.getItem('token')?.substring(0, 10) + '...');
+    const appUserId = localStorage.getItem('appUserId');
+    const token = localStorage.getItem('token');
+    if (!appUserId || !token) {
+      throw new Error('appUserId or token not found');
+    }
+
     const response = await axios.get(`${API_URL}/email-analytics/analytics`, {
-      withCredentials: true,
-      headers: getAuthHeaders()
+      params: { appUserId },
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      withCredentials: true
     });
     return response.data;
   } catch (error) {

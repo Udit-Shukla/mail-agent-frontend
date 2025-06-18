@@ -3,47 +3,114 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { getEmailAnalytics, type EmailAnalyticsData } from "@/lib/api/emailAnalytics"
 import { useEffect, useState } from "react"
-import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertCircle } from "lucide-react"
+import { AlertCircle, Plus, GripVertical } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { CategoryModal } from "@/components/CategoryModal"
+import { getCategories, updateCategories, type Category } from "@/lib/api/categories"
+import { toast } from "sonner"
+import { Counter } from "@/components/ui/counter"
+import { Skeleton } from "@/components/ui/skeleton"
+import { useCategory } from "@/contexts/CategoryContext"
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
-const COLORS = {
-  categories: ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8", "#82CA9D", "#FFC658", "#FF6B6B", "#4ECDC4", "#45B7D1"],
-  sentiment: {
-    positive: "#4CAF50",
-    negative: "#F44336",
-    neutral: "#9E9E9E"
-  },
-  priority: {
-    urgent: "#F44336",
-    high: "#FF9800",
-    medium: "#2196F3",
-    low: "#9E9E9E"
-  }
+interface SortableCardProps {
+  id: string;
+  children: React.ReactNode;
+}
+
+function SortableCard({ id, children }: SortableCardProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="relative">
+      <button
+        {...attributes}
+        {...listeners}
+        className="absolute -left-2 top-1/2 -translate-y-1/2 p-1 hover:bg-accent rounded cursor-grab active:cursor-grabbing z-10"
+      >
+        <GripVertical className="h-4 w-4 text-muted-foreground" />
+      </button>
+      {children}
+    </div>
+  );
 }
 
 export function EmailAnalytics() {
   const router = useRouter();
+  const { categories, setCategories, visibleCategories, updateCategoryOrder } = useCategory();
   const [data, setData] = useState<EmailAnalyticsData>({
     volumeOverTime: [],
     categories: [],
     sentiment: [],
     priority: []
   });
-  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = categories.findIndex((cat) => cat._id === active.id);
+      const newIndex = categories.findIndex((cat) => cat._id === over.id);
+
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const newCategories = arrayMove(categories, oldIndex, newIndex);
+        await updateCategoryOrder(newCategories);
+      }
+    }
+  };
 
   useEffect(() => {
-    const fetchAnalytics = async () => {
+    const fetchData = async () => {
       try {
-        setIsLoading(true);
         setError(null);
-        console.log('Fetching email analytics...');
-        const analyticsData = await getEmailAnalytics();
-        console.log('Received analytics data:', analyticsData);
+        setIsLoading(true);
         
+        // Fetch both analytics and categories
+        const [analyticsData, categories] = await Promise.all([
+          getEmailAnalytics(),
+          getCategories()
+        ]);
+
         // Calculate totals for percentages
         const categoryTotal = analyticsData.categories.reduce((sum, item) => sum + item.value, 0);
         const sentimentTotal = analyticsData.sentiment.reduce((sum, item) => sum + item.value, 0);
@@ -58,194 +125,257 @@ export function EmailAnalytics() {
         };
 
         setData(enhancedData);
+        setCategories(categories);
       } catch (error) {
-        console.error('Error fetching email analytics:', error);
-        setError('Failed to load email analytics. Please try again later.');
+        console.error('Error fetching data:', error);
+        setError('Failed to load data. Please try again later.');
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchAnalytics();
-  }, []);
+    fetchData();
+  }, [setCategories]);
 
   const handleCategoryClick = (category: string) => {
     router.push(`/mail?category=${encodeURIComponent(category)}`);
   };
 
-  const handleSentimentClick = (sentiment: string) => {
-    router.push(`/mail?sentiment=${encodeURIComponent(sentiment)}`);
-  };
-
-  const handlePriorityClick = (priority: string) => {
-    router.push(`/mail?priority=${encodeURIComponent(priority)}`);
+  const handleSaveCategories = async (categories: Category[]) => {
+    try {
+      const updatedCategories = await updateCategories(categories);
+      setCategories(updatedCategories);
+      toast.success('Categories updated successfully');
+    } catch (error) {
+      console.error('Error updating categories:', error);
+      toast.error('Failed to update categories');
+    }
   };
 
   if (error) {
     return (
-      <Alert variant="destructive" className="col-span-7">
+      <Alert variant="destructive">
         <AlertCircle className="h-4 w-4" />
         <AlertDescription>{error}</AlertDescription>
       </Alert>
     );
   }
 
-  if (isLoading) {
-    return (
-      <>
-        <Card className="col-span-3">
-          <CardHeader>
-            <CardTitle>Email Categories</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 gap-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-14 rounded-lg" />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="col-span-3">
-          <CardHeader>
-            <CardTitle>Sentiment Analysis</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 gap-3">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-14 rounded-lg" />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="col-span-3">
-          <CardHeader>
-            <CardTitle>Priority Distribution</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 gap-3">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="h-14 rounded-lg" />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </>
-    );
-  }
-
-  return (
-    <>
-      <Card className="col-span-3">
-        <CardHeader>
-          <CardTitle>Email Categories</CardTitle>
+  const renderSkeleton = () => (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <Card className="h-full">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <Skeleton className="h-6 w-32" />
+          <Skeleton className="h-8 w-32" />
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 gap-3">
-            {data.categories.map((category) => (
-              <button
-                key={category.name}
-                onClick={() => handleCategoryClick(category.name)}
-                className="group flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/50 transition-all duration-200 text-left w-full hover:shadow-md"
-              >
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="flex items-center justify-between p-4 rounded-lg border">
                 <div className="flex items-center gap-3">
-                  <div 
-                    className="w-3 h-3 rounded-full transition-transform duration-200 group-hover:scale-110" 
-                    style={{ backgroundColor: COLORS.categories[data.categories.indexOf(category) % COLORS.categories.length] }} 
-                  />
-                  <div className="flex flex-col">
-                    <span className="font-medium text-sm">
-                      {category.name === 'Other' ? 'Others/Unanalysed' : category.name}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {category.total ? ((category.value / category.total) * 100).toFixed(1) : '0'}% of total
-                    </span>
+                  <Skeleton className="w-3 h-3 rounded-full" />
+                  <div className="flex flex-col gap-2">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-3 w-16" />
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {category.unreadCount && category.unreadCount > 0 && (
-                    <Badge variant="destructive" className="font-medium">
-                      {category.unreadCount} unread
-                    </Badge>
-                  )}
-                  <Badge variant="secondary" className="font-medium">
-                    {category.value}
-                  </Badge>
-                </div>
-              </button>
+                <Skeleton className="h-6 w-16" />
+              </div>
             ))}
           </div>
         </CardContent>
       </Card>
 
-      <div className="col-span-3 flex flex-col gap-4">
-        <Card className="h-fit">
+      <div className="flex flex-row gap-4">
+        {[1, 2].map((section) => (
+          <Card key={section}>
+            <CardHeader>
+              <Skeleton className="h-6 w-32" />
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-center justify-between p-4 rounded-lg border">
+                    <div className="flex items-center gap-3">
+                      <Skeleton className="w-3 h-3 rounded-full" />
+                      <div className="flex flex-col gap-2">
+                        <Skeleton className="h-4 w-24" />
+                        <Skeleton className="h-3 w-16" />
+                      </div>
+                    </div>
+                    <Skeleton className="h-6 w-16" />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+
+  if (isLoading) {
+    return renderSkeleton();
+  }
+
+  const categoryIds = categories
+    .map((cat) => cat._id)
+    .filter((id): id is string => id !== undefined);
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <Card className="h-full">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>Email Categories</CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsCategoryModalOpen(true)}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Manage Categories
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={categoryIds}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="grid grid-cols-1 gap-3">
+                  {categories
+                    .filter(category => category._id && visibleCategories.includes(category._id))
+                    .map((category) => {
+                      const analyticsCategory = data.categories.find(c => c.name === category.name);
+                      return (
+                        <SortableCard key={category._id} id={category._id || ''}>
+                          <button
+                            onClick={() => handleCategoryClick(category.name)}
+                            className="group flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/50 transition-all duration-200 text-left w-full hover:shadow-md"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div 
+                                className="w-3 h-3 rounded-full transition-transform duration-200 group-hover:scale-110" 
+                                style={{ backgroundColor: category.color }} 
+                              />
+                              <div className="flex flex-col">
+                                <span className="font-medium text-sm">
+                                  {category.name === 'Other' ? 'Others/Unanalysed' : category.name}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {analyticsCategory?.total ? ((analyticsCategory.value / analyticsCategory.total) * 100).toFixed(1) : '0'}% of total
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {analyticsCategory?.unreadCount && analyticsCategory.unreadCount > 0 && (
+                                <Badge variant="destructive" className="font-medium">
+                                  <Counter value={analyticsCategory.unreadCount} className="text-white" />
+                                </Badge>
+                              )}
+                              <Badge variant="secondary" className="font-medium">
+                                <Counter value={analyticsCategory?.value || 0}  />
+                              </Badge>
+                            </div>
+                          </button>
+                        </SortableCard>
+                      );
+                    })}
+                </div>
+              </SortableContext>
+            </DndContext>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex flex-col gap-4">
+        <Card>
           <CardHeader>
-            <CardTitle>Sentiment Analysis</CardTitle>
+            <CardTitle>Email Priority</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 gap-3">
-              {data.sentiment.map((sentiment) => (
-                <button
-                  key={sentiment.name}
-                  onClick={() => handleSentimentClick(sentiment.name)}
-                  className="group flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/50 transition-all duration-200 text-left w-full hover:shadow-md"
+              {data.priority.map((item) => (
+                <div
+                  key={item.name}
+                  className="flex items-center justify-between p-4 rounded-lg border bg-card"
                 >
                   <div className="flex items-center gap-3">
                     <div 
-                      className="w-3 h-3 rounded-full transition-transform duration-200 group-hover:scale-110" 
-                      style={{ backgroundColor: COLORS.sentiment[sentiment.name as keyof typeof COLORS.sentiment] }} 
+                      className={`w-3 h-3 rounded-full ${
+                        item.name === 'urgent' ? 'bg-red-500' :
+                        item.name === 'high' ? 'bg-orange-500' :
+                        item.name === 'medium' ? 'bg-yellow-500' :
+                        'bg-green-500'
+                      }`}
                     />
                     <div className="flex flex-col">
-                      <span className="font-medium text-sm capitalize">{sentiment.name}</span>
+                      <span className="font-medium text-sm capitalize">
+                        {item.name}
+                      </span>
                       <span className="text-xs text-muted-foreground">
-                        {sentiment.total ? ((sentiment.value / sentiment.total) * 100).toFixed(1) : '0'}% of total
+                        {item.total ? ((item.value / item.total) * 100).toFixed(1) : '0'}% of total
                       </span>
                     </div>
                   </div>
-                  <Badge variant="secondary" className="ml-2 font-medium">
-                    {sentiment.value}
+                  <Badge variant="secondary" className="font-medium">
+                    <Counter value={item.value} />
                   </Badge>
-                </button>
+                </div>
               ))}
             </div>
           </CardContent>
         </Card>
 
-        <Card className="h-fit">
+        <Card>
           <CardHeader>
-            <CardTitle>Priority Distribution</CardTitle>
+            <CardTitle>Email Sentiment</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 gap-3">
-              {data.priority.map((priority) => (
-                <button
-                  key={priority.name}
-                  onClick={() => handlePriorityClick(priority.name)}
-                  className="group flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/50 transition-all duration-200 text-left w-full hover:shadow-md"
+              {data.sentiment.map((item) => (
+                <div
+                  key={item.name}
+                  className="flex items-center justify-between p-4 rounded-lg border bg-card"
                 >
                   <div className="flex items-center gap-3">
                     <div 
-                      className="w-3 h-3 rounded-full transition-transform duration-200 group-hover:scale-110" 
-                      style={{ backgroundColor: COLORS.priority[priority.name as keyof typeof COLORS.priority] }} 
+                      className={`w-3 h-3 rounded-full ${
+                        item.name === 'positive' ? 'bg-green-500' :
+                        item.name === 'negative' ? 'bg-red-500' :
+                        'bg-blue-500'
+                      }`}
                     />
                     <div className="flex flex-col">
-                      <span className="font-medium text-sm capitalize">{priority.name}</span>
+                      <span className="font-medium text-sm capitalize">
+                        {item.name}
+                      </span>
                       <span className="text-xs text-muted-foreground">
-                        {priority.total ? ((priority.value / priority.total) * 100).toFixed(1) : '0'}% of total
+                        {item.total ? ((item.value / item.total) * 100).toFixed(1) : '0'}% of total
                       </span>
                     </div>
                   </div>
-                  <Badge variant="secondary" className="ml-2 font-medium">
-                    {priority.value}
+                  <Badge variant="secondary" className="font-medium">
+                    <Counter value={item.value} />
                   </Badge>
-                </button>
+                </div>
               ))}
             </div>
           </CardContent>
         </Card>
       </div>
-    </>
-  )
+
+      <CategoryModal
+        isOpen={isCategoryModalOpen}
+        onClose={() => setIsCategoryModalOpen(false)}
+        onSave={handleSaveCategories}
+        initialCategories={categories}
+      />
+    </div>
+  );
 } 
