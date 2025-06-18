@@ -2,7 +2,7 @@ import axios from 'axios';
 import { getApiUrl } from '../api';
 
 export interface Category {
-  _id: string;
+  _id?: string;
   name: string;
   color: string;
   createdAt?: Date;
