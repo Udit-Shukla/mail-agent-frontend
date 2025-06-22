@@ -1,10 +1,11 @@
 'use client'
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Plus, X, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { type Category } from "@/lib/api/categories"
@@ -14,18 +15,44 @@ interface CategoryModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (categories: Category[]) => void;
-  initialCategories: Category[];
 }
 
-export function CategoryModal({ isOpen, onClose, onSave, initialCategories }: CategoryModalProps) {
-  const { visibleCategories, toggleCategoryVisibility } = useCategory();
-  const [categories, setCategories] = useState<Category[]>(initialCategories);
+export function CategoryModal({ isOpen, onClose, onSave }: CategoryModalProps) {
+  const { categories: contextCategories, visibleCategories, toggleCategoryVisibility } = useCategory();
+  const [categories, setLocalCategories] = useState<Category[]>(contextCategories);
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryLabel, setNewCategoryLabel] = useState("");
+  const [newCategoryDescription, setNewCategoryDescription] = useState("");
   const [newCategoryColor, setNewCategoryColor] = useState("#8884D8");
 
+  // Use categories from context when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setLocalCategories(contextCategories);
+    }
+  }, [isOpen, contextCategories]);
+
+  // Ensure all categories are visible by default when modal opens
+  useEffect(() => {
+    if (isOpen && contextCategories.length > 0) {
+      const categoryIds = contextCategories
+        .map(cat => cat._id)
+        .filter((id): id is string => id !== undefined);
+      
+      // Make all categories visible if none are currently visible
+      if (visibleCategories.length === 0) {
+        categoryIds.forEach(id => {
+          if (!visibleCategories.includes(id)) {
+            toggleCategoryVisibility(id);
+          }
+        });
+      }
+    }
+  }, [isOpen, contextCategories, visibleCategories, toggleCategoryVisibility]);
+
   const handleAddCategory = () => {
-    if (!newCategoryName.trim()) {
-      toast.error('Please enter a category name');
+    if (!newCategoryName.trim() || !newCategoryLabel.trim()) {
+      toast.error('Please enter both a category name and label');
       return;
     }
 
@@ -40,12 +67,16 @@ export function CategoryModal({ isOpen, onClose, onSave, initialCategories }: Ca
 
     const newCategory: Category = {
       name: newCategoryName.trim(),
+      label: newCategoryLabel.trim(),
+      description: newCategoryDescription.trim() || 'No description provided',
       color: newCategoryColor,
       createdAt: new Date(),
     };
 
-    setCategories([...categories, newCategory]);
+    setLocalCategories([...categories, newCategory]);
     setNewCategoryName("");
+    setNewCategoryLabel("");
+    setNewCategoryDescription("");
     setNewCategoryColor("#8884D8");
   };
 
@@ -54,7 +85,7 @@ export function CategoryModal({ isOpen, onClose, onSave, initialCategories }: Ca
       toast.error('You must have at least one category');
       return;
     }
-    setCategories(categories.filter((_, i) => i !== index));
+    setLocalCategories(categories.filter((_, i) => i !== index));
   };
 
   const handleSave = () => {
@@ -68,66 +99,96 @@ export function CategoryModal({ isOpen, onClose, onSave, initialCategories }: Ca
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[800px]">
+      <DialogContent className="sm:max-w-[800px] max-h-[95vh] overflow-hidden">
         <DialogHeader>
           <DialogTitle className="text-2xl font-bold">Manage Categories</DialogTitle>
           <DialogDescription className="text-base">
             Add or remove categories for organizing your emails. Each category will be used by AI to classify your emails.
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-6 py-6">
+        <div className="grid gap-6 py-2 overflow-y-auto max-h-[calc(90vh-200px)]">
           <div className="grid gap-4">
             <Label htmlFor="category-name" className="text-base">Add New Category</Label>
-            <div className="flex gap-3">
-              <Input
-                id="category-name"
-                value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
-                placeholder="Enter category name"
-                className="h-11 text-base"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    handleAddCategory();
-                  }
-                }}
-              />
-              <Input
-                type="color"
-                value={newCategoryColor}
-                onChange={(e) => setNewCategoryColor(e.target.value)}
-                className="w-16 h-11 p-1"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={handleAddCategory}
-                className="h-11 w-11"
-              >
-                <Plus className="h-5 w-5" />
-              </Button>
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-row gap-3 justify-between">
+                <div className="w-full">
+                  <Label htmlFor="category-name" className="text-sm mb-2  ">Name (Internal)</Label>
+                  <Input
+                    id="category-name"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    placeholder="e.g., urgent_high_priority"
+                    className="h-11 text-base"
+                  />
+                </div>
+                <div className="w-full">
+                  <Label htmlFor="category-label" className="text-sm mb-2">Label (Display)</Label>
+                  <Input
+                    id="category-label"
+                    value={newCategoryLabel}
+                    onChange={(e) => setNewCategoryLabel(e.target.value)}
+                    placeholder="e.g., 🚨 Urgent & High-Priority"
+                    className="h-11 text-base"
+                  />
+                </div>
+                <div className="gap-3 flex flex-row items-end">
+                <div>
+                  <Label htmlFor="category-color" className="text-sm mb-2">Color</Label>
+                  <Input
+                    id="category-color"
+                    type="color"
+                    value={newCategoryColor}
+                    onChange={(e) => setNewCategoryColor(e.target.value)}
+                    className="w-16 h-11 p-1"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={handleAddCategory}
+                  className="h-11 w-11"
+                >
+                  <Plus className="h-5 w-5" />
+                </Button>
+              </div>
+              </div>
+              <div>
+                <Label htmlFor="category-description" className="text-sm mb-2">Description</Label>
+                <Textarea
+                  id="category-description"
+                  value={newCategoryDescription}
+                  onChange={(e) => setNewCategoryDescription(e.target.value)}
+                  placeholder="Describe what types of emails belong to this category..."
+                  className="min-h-[80px] text-base"
+                />
+              </div>
+              
             </div>
           </div>
           <div className="grid gap-4">
-            <Label className="text-base">Existing Categories</Label>
-            <div className="grid grid-cols-2 gap-3 max-h-[300px] overflow-y-auto p-1">
+            <Label className="text-base mb-2">Existing Categories</Label>
+            <div className="grid grid-cols-1 gap-3 max-h-[400px] overflow-y-auto p-1">
               {categories.map((category, index) => (
                 <div
                   key={index}
-                  className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition-all duration-200"
+                  className="flex items-center gap-3 p-4 rounded-lg border bg-card hover:bg-accent/50 transition-all duration-200"
                 >
                   <div
-                    className="w-5 h-5 rounded-full"
+                    className="w-5 h-5 rounded-full flex-shrink-0"
                     style={{ backgroundColor: category.color }}
                   />
-                  <span className="flex-1 text-base">{category.name}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-base">{category.label}</div>
+                    <div className="text-sm text-muted-foreground truncate">{category.description}</div>
+              
+                  </div>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
                     onClick={() => category._id && toggleCategoryVisibility(category._id)}
-                    className="h-8 w-8 hover:bg-accent"
+                    className="h-8 w-8 hover:bg-accent flex-shrink-0"
                     title={category._id && visibleCategories.includes(category._id) ? "Hide category" : "Show category"}
                   >
                     {category._id && visibleCategories.includes(category._id) ? (
@@ -141,7 +202,7 @@ export function CategoryModal({ isOpen, onClose, onSave, initialCategories }: Ca
                     variant="ghost"
                     size="icon"
                     onClick={() => handleRemoveCategory(index)}
-                    className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive"
+                    className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive flex-shrink-0"
                     title="Remove category"
                   >
                     <X className="h-4 w-4" />
@@ -151,7 +212,7 @@ export function CategoryModal({ isOpen, onClose, onSave, initialCategories }: Ca
             </div>
           </div>
         </div>
-        <div className="flex justify-end gap-3">
+        <div className="flex justify-end gap-3 border-t pt-4">
           <Button variant="outline" onClick={onClose} className="h-11 px-6">
             Cancel
           </Button>

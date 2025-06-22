@@ -18,6 +18,11 @@ export function Counter({ value, duration = 1000, className }: CounterProps) {
 
   useEffect(() => {
     if (inView) {
+      if (value === 0) {
+        setCount(0)
+        return
+      }
+
       let start = 0
       const end = value
       const incrementTime = duration / end

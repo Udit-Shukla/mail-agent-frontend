@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { CategoryModal } from "@/components/CategoryModal"
-import { getCategories, updateCategories, type Category } from "@/lib/api/categories"
+import { updateCategories, type Category } from "@/lib/api/categories"
 import { toast } from "sonner"
 import { Counter } from "@/components/ui/counter"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -105,11 +105,8 @@ export function EmailAnalytics() {
         setError(null);
         setIsLoading(true);
         
-        // Fetch both analytics and categories
-        const [analyticsData, categories] = await Promise.all([
-          getEmailAnalytics(),
-          getCategories()
-        ]);
+        // Fetch analytics data only - categories come from CategoryContext
+        const analyticsData = await getEmailAnalytics();
 
         // Calculate totals for percentages
         const categoryTotal = analyticsData.categories.reduce((sum, item) => sum + item.value, 0);
@@ -125,7 +122,6 @@ export function EmailAnalytics() {
         };
 
         setData(enhancedData);
-        setCategories(categories);
       } catch (error) {
         console.error('Error fetching data:', error);
         setError('Failed to load data. Please try again later.');
@@ -135,10 +131,18 @@ export function EmailAnalytics() {
     };
 
     fetchData();
-  }, [setCategories]);
+  }, []);
 
   const handleCategoryClick = (category: string) => {
     router.push(`/mail?category=${encodeURIComponent(category)}`);
+  };
+
+  const handlePriorityClick = (priority: string) => {
+    router.push(`/mail?priority=${encodeURIComponent(priority)}`);
+  };
+
+  const handleSentimentClick = (sentiment: string) => {
+    router.push(`/mail?sentiment=${encodeURIComponent(sentiment)}`);
   };
 
   const handleSaveCategories = async (categories: Category[]) => {
@@ -265,11 +269,11 @@ export function EmailAnalytics() {
                               />
                               <div className="flex flex-col">
                                 <span className="font-medium text-sm">
-                                  {category.name === 'Other' ? 'Others/Unanalysed' : category.name}
+                                  {category.label}
                                 </span>
-                                <span className="text-xs text-muted-foreground">
+                                {/* <span className="text-xs text-muted-foreground">
                                   {analyticsCategory?.total ? ((analyticsCategory.value / analyticsCategory.total) * 100).toFixed(1) : '0'}% of total
-                                </span>
+                                </span> */}
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
@@ -301,13 +305,14 @@ export function EmailAnalytics() {
           <CardContent>
             <div className="grid grid-cols-1 gap-3">
               {data.priority.map((item) => (
-                <div
+                <button
                   key={item.name}
-                  className="flex items-center justify-between p-4 rounded-lg border bg-card"
+                  onClick={() => handlePriorityClick(item.name)}
+                  className="group flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/50 transition-all duration-200 text-left w-full hover:shadow-md"
                 >
                   <div className="flex items-center gap-3">
                     <div 
-                      className={`w-3 h-3 rounded-full ${
+                      className={`w-3 h-3 rounded-full transition-transform duration-200 group-hover:scale-110 ${
                         item.name === 'urgent' ? 'bg-red-500' :
                         item.name === 'high' ? 'bg-orange-500' :
                         item.name === 'medium' ? 'bg-yellow-500' :
@@ -318,15 +323,15 @@ export function EmailAnalytics() {
                       <span className="font-medium text-sm capitalize">
                         {item.name}
                       </span>
-                      <span className="text-xs text-muted-foreground">
+                      {/* <span className="text-xs text-muted-foreground">
                         {item.total ? ((item.value / item.total) * 100).toFixed(1) : '0'}% of total
-                      </span>
+                      </span> */}
                     </div>
                   </div>
                   <Badge variant="secondary" className="font-medium">
                     <Counter value={item.value} />
                   </Badge>
-                </div>
+                </button>
               ))}
             </div>
           </CardContent>
@@ -339,13 +344,14 @@ export function EmailAnalytics() {
           <CardContent>
             <div className="grid grid-cols-1 gap-3">
               {data.sentiment.map((item) => (
-                <div
+                <button
                   key={item.name}
-                  className="flex items-center justify-between p-4 rounded-lg border bg-card"
+                  onClick={() => handleSentimentClick(item.name)}
+                  className="group flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/50 transition-all duration-200 text-left w-full hover:shadow-md"
                 >
                   <div className="flex items-center gap-3">
                     <div 
-                      className={`w-3 h-3 rounded-full ${
+                      className={`w-3 h-3 rounded-full transition-transform duration-200 group-hover:scale-110 ${
                         item.name === 'positive' ? 'bg-green-500' :
                         item.name === 'negative' ? 'bg-red-500' :
                         'bg-blue-500'
@@ -355,15 +361,15 @@ export function EmailAnalytics() {
                       <span className="font-medium text-sm capitalize">
                         {item.name}
                       </span>
-                      <span className="text-xs text-muted-foreground">
+                      {/* <span className="text-xs text-muted-foreground">
                         {item.total ? ((item.value / item.total) * 100).toFixed(1) : '0'}% of total
-                      </span>
+                      </span> */}
                     </div>
                   </div>
                   <Badge variant="secondary" className="font-medium">
                     <Counter value={item.value} />
                   </Badge>
-                </div>
+                </button>
               ))}
             </div>
           </CardContent>
@@ -374,7 +380,6 @@ export function EmailAnalytics() {
         isOpen={isCategoryModalOpen}
         onClose={() => setIsCategoryModalOpen(false)}
         onSave={handleSaveCategories}
-        initialCategories={categories}
       />
     </div>
   );

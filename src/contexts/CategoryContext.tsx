@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { Category, updateCategories } from '@/lib/api/categories';
+import { Category, updateCategories, getCategories } from '@/lib/api/categories';
 import { toast } from 'sonner';
 
 interface CategoryContextType {
@@ -10,6 +10,7 @@ interface CategoryContextType {
   visibleCategories: string[];
   toggleCategoryVisibility: (categoryId: string) => void;
   updateCategoryOrder: (categories: Category[]) => void;
+  loadCategories: () => Promise<void>;
 }
 
 const CategoryContext = createContext<CategoryContextType | undefined>(undefined);
@@ -18,13 +19,30 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [visibleCategories, setVisibleCategories] = useState<string[]>([]);
 
-  // Load saved preferences from localStorage
+  // Load categories from backend on mount
+  useEffect(() => {
+    loadCategories();
+  }, []);
+
+  // Load saved preferences from localStorage (but don't override default visibility)
   useEffect(() => {
     const savedVisibleCategories = localStorage.getItem('visibleCategories');
-    if (savedVisibleCategories) {
+    if (savedVisibleCategories && visibleCategories.length === 0) {
       setVisibleCategories(JSON.parse(savedVisibleCategories));
     }
-  }, []);
+  }, [visibleCategories.length]);
+
+  // Update visible categories when categories change (for new users)
+  useEffect(() => {
+    if (categories.length > 0 && visibleCategories.length === 0) {
+      // If we have categories but no visible categories, make all visible
+      const categoryIds = categories
+        .map(cat => cat._id)
+        .filter((id): id is string => id !== undefined);
+      setVisibleCategories(categoryIds);
+      localStorage.setItem('visibleCategories', JSON.stringify(categoryIds));
+    }
+  }, [categories, visibleCategories.length]);
 
   // Save preferences to localStorage when they change
   useEffect(() => {
@@ -63,6 +81,36 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const loadCategories = async () => {
+    try {
+      // Check if user is authenticated before trying to load categories
+      const token = localStorage.getItem('token');
+      const appUserId = localStorage.getItem('appUserId');
+      
+      if (!token || !appUserId) {
+        // User is not authenticated, don't try to load categories
+        console.log('User not authenticated, skipping category load');
+        return;
+      }
+
+      const fetchedCategories = await getCategories();
+      setCategories(fetchedCategories);
+      
+      // Set all categories as visible by default
+      if (fetchedCategories.length > 0) {
+        const categoryIds = fetchedCategories
+          .map(cat => cat._id)
+          .filter((id): id is string => id !== undefined);
+        setVisibleCategories(categoryIds);
+        // Save to localStorage immediately
+        localStorage.setItem('visibleCategories', JSON.stringify(categoryIds));
+      }
+    } catch (error) {
+      console.error('Error loading categories:', error);
+      // Don't show toast error here as it might be too early in the app lifecycle
+    }
+  };
+
   return (
     <CategoryContext.Provider
       value={{
@@ -71,6 +119,7 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
         visibleCategories,
         toggleCategoryVisibility,
         updateCategoryOrder,
+        loadCategories,
       }}
     >
       {children}

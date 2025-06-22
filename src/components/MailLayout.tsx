@@ -10,13 +10,13 @@ import { ComposeFAB } from '@/components/ComposeFAB';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { toast } from 'sonner';
 import { FaUser } from 'react-icons/fa';
-import { Sparkles, BarChart2 } from 'lucide-react';
+import { Sparkles, BarChart2, Plus } from 'lucide-react';
 import { SetupWizard } from '@/components/SetupWizard';
 import { LoadingScreen } from '@/components/LoadingScreen';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { CategoryModal } from "@/components/CategoryModal";
-import { getCategories, updateCategories, type Category } from "@/lib/api/categories";
+import { updateCategories, type Category } from "@/lib/api/categories";
+import { Button } from '@/components/ui/button';
+import { Mail } from 'lucide-react';
 
 const ProviderIcon = ({ provider, className }: { provider: Provider, className?: string }) => {
   if (provider === 'outlook') {
@@ -38,7 +38,6 @@ export function MailLayout({ children }: MailLayoutProps) {
   const [showSetupWizard, setShowSetupWizard] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(true);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = React.useState(false);
-  const [userCategories, setUserCategories] = React.useState<Category[]>([]);
 
   const fetchLinkedAccounts = useCallback(async () => {
     try {
@@ -142,12 +141,10 @@ export function MailLayout({ children }: MailLayoutProps) {
         // If we have accounts now, show the category modal
         if (linkedAccounts.length > 0) {
           try {
-            const categories = await getCategories()
-            setUserCategories(categories)
             setIsCategoryModalOpen(true)
           } catch (error) {
-            console.error('Error fetching categories:', error)
-            toast.error('Failed to load categories')
+            console.error('Error showing category modal:', error)
+            toast.error('Failed to show category modal')
           }
         }
       }
@@ -156,12 +153,10 @@ export function MailLayout({ children }: MailLayoutProps) {
 
   const handleSaveCategories = async (categories: Category[]) => {
     try {
-      const updatedCategories = await updateCategories(categories)
-      setUserCategories(updatedCategories)
+      await updateCategories(categories)
       toast.success('Categories updated successfully')
       setIsCategoryModalOpen(false)
-      // Show setup wizard after categories are saved
-      setShowSetupWizard(true)
+      // Don't show setup wizard after categories are saved - user should see the main dashboard
     } catch (error) {
       console.error('Error updating categories:', error)
       toast.error('Failed to update categories')
@@ -211,12 +206,10 @@ export function MailLayout({ children }: MailLayoutProps) {
         await fetchLinkedAccounts();
         // Show category modal
         try {
-          const categories = await getCategories();
-          setUserCategories(categories);
           setIsCategoryModalOpen(true);
         } catch (error) {
-          console.error('Error fetching categories:', error);
-          toast.error('Failed to load categories');
+          console.error('Error showing category modal:', error);
+          toast.error('Failed to show category modal');
         }
       } else if (event.data.type === 'AUTH_ERROR') {
         toast.error(event.data.error);
@@ -241,32 +234,95 @@ export function MailLayout({ children }: MailLayoutProps) {
     return <LoadingScreen />;
   }
 
-  // Show empty state when no accounts are connected and setup was skipped
-  if (!activeAccount && !showSetupWizard) {
+  // Show empty state when no accounts are linked
+  if (linkedAccounts.length === 0) {
     return (
       <div className="flex h-screen">
+        {/* Account Strip - Unified for all states */}
         <div className="w-16 bg-muted flex flex-col items-center py-4 border-r">
-          <Button
-            onClick={handleAddAccount}
-            size="icon"
-            className="rounded-full w-10 h-10 mb-2"
-          >
-            <IoMdAdd className="h-5 w-5" />
-          </Button>
+          <div className="flex-1">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={handleAddAccount}
+                    className="w-10 h-10 rounded-full flex items-center justify-center bg-background text-foreground hover:bg-accent mt-2 transition-all hover:scale-105"
+                  >
+                    <IoMdAdd className="w-6 h-6" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p className="flex items-center gap-2">
+                    <IoMdAdd className="w-4 h-4" />
+                    Add new account
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+
+          <div className="space-y-4">
+            <ThemeToggle />
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => router.push('/profile')}
+                    className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-all hover:scale-105"
+                  >
+                    <FaUser className="w-5 h-5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="flex flex-col gap-1">
+                  <p className="font-medium">Logged in as:</p>
+                  <p className="text-sm break-all">{userEmail}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={handleLogout}
+                    className="w-10 h-10 rounded-full flex items-center justify-center bg-background text-foreground hover:bg-accent transition-all hover:scale-105"
+                  >
+                    <IoMdLogOut className="w-5 h-5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <p className="flex items-center gap-2">
+                    <IoMdLogOut className="w-4 h-4" />
+                    Logout
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
         </div>
-        <div className="flex-1 flex items-center justify-center">
-          <Card className="w-full max-w-md mx-4">
-            <CardHeader className="text-center">
-              <CardTitle>No Email Accounts Connected</CardTitle>
-              <CardDescription>Connect your first email account to start managing your emails</CardDescription>
-            </CardHeader>
-            <CardContent className="flex justify-center">
-              <Button onClick={handleAddAccount} className="flex items-center gap-2">
-                <IoMdAdd className="h-5 w-5" />
-                Add Account
-              </Button>
-            </CardContent>
-          </Card>
+        
+        {/* Empty State Content */}
+        <div className="flex-1 overflow-hidden">
+          <div className="h-full flex items-center justify-center bg-background p-4">
+            <div className="text-center max-w-md">
+              <div className="mx-auto w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                <Mail className="w-8 h-8 text-muted-foreground" />
+              </div>
+              <h2 className="text-2xl font-semibold mb-2">No email accounts connected</h2>
+              <p className="text-muted-foreground mb-6">
+                Connect your email accounts to start using Mail Agent and view your analytics.
+              </p>
+              <div className="flex justify-center">
+                <Button
+                  onClick={handleAddAccount}
+                  className="flex items-center justify-center gap-2 h-12"
+                  size="lg"
+                >
+                  <Plus className="h-5 w-5" />
+                  Start Setup
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -274,7 +330,7 @@ export function MailLayout({ children }: MailLayoutProps) {
 
   return (
     <div className="flex h-screen">
-      {/* Account Strip */}
+      {/* Account Strip - Unified for all states */}
       <div className="w-16 bg-muted flex flex-col items-center py-4 border-r">
         <div className="flex-1">
           <TooltipProvider>
@@ -371,7 +427,6 @@ export function MailLayout({ children }: MailLayoutProps) {
               <TooltipContent side="right" className="flex flex-col gap-1">
                 <p className="font-medium">Logged in as:</p>
                 <p className="text-sm break-all">{userEmail}</p>
-                {/* <p className="text-xs text-primary-foreground">Click to view profile</p> */}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -407,7 +462,6 @@ export function MailLayout({ children }: MailLayoutProps) {
         isOpen={isCategoryModalOpen}
         onClose={() => setIsCategoryModalOpen(false)}
         onSave={handleSaveCategories}
-        initialCategories={userCategories}
       />
     </div>
   );

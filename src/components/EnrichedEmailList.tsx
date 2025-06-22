@@ -8,6 +8,12 @@ import { Sparkles, AlertCircle, Clock, ArrowLeft, Filter } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getCategories, type Category } from "@/lib/api/categories"
 import { toast } from "sonner";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 
 interface EmailMeta {
@@ -198,37 +204,65 @@ export function EnrichedEmailList() {
             if (data.email) {
               return data.email;
             }
-            
-            // Otherwise, update the existing email with new AI metadata
-            return {
-              ...email,
-              aiMeta: data.aiMeta || email.aiMeta,
-              isProcessed: data.status === 'completed'
-            };
+            // Otherwise, update the aiMeta if available
+            if (data.aiMeta) {
+              return {
+                ...email,
+                aiMeta: { ...email.aiMeta, ...data.aiMeta }
+              };
+            }
+            return email;
           }
           return email;
         });
       });
 
-      // Update selected email if it's the one being enriched
+      // Update selected email if it's the one being updated
       if (selectedEmail?.id === data.messageId) {
-        setSelectedEmail(prev => {
-          if (!prev) return prev;
-          if (data.email) return data.email;
-          return {
+        if (data.email) {
+          setSelectedEmail(data.email);
+        } else if (data.aiMeta) {
+          setSelectedEmail(prev => prev ? {
             ...prev,
-            aiMeta: data.aiMeta || prev.aiMeta,
-            isProcessed: data.status === 'completed'
-          };
-        });
+            aiMeta: { ...prev.aiMeta, ...data.aiMeta }
+          } : null);
+        }
+      }
+    };
+
+    // Handle category update responses
+    const handleCategoryUpdated = (data: {
+      messageId: string;
+      category: string;
+      aiMeta: EmailMeta;
+    }) => {
+      console.log('🏷️ Category updated:', data);
+      
+      // Update emails list
+      setEmails(prevEmails => 
+        prevEmails.map(email => 
+          email.id === data.messageId 
+            ? { ...email, aiMeta: { ...email.aiMeta, ...data.aiMeta } }
+            : email
+        )
+      );
+
+      // Update selected email if it's the one being updated
+      if (selectedEmail?.id === data.messageId) {
+        setSelectedEmail(prev => prev ? {
+          ...prev,
+          aiMeta: { ...prev.aiMeta, ...data.aiMeta }
+        } : null);
       }
     };
 
     // Listen for enrichment events
     socket.on('mail:enrichmentStatus', handleEnrichmentUpdate);
+    socket.on('mail:categoryUpdated', handleCategoryUpdated);
 
     return () => {
       socket.off('mail:enrichmentStatus', handleEnrichmentUpdate);
+      socket.off('mail:categoryUpdated', handleCategoryUpdated);
     };
   }, [socket, selectedEmail]);
 
@@ -354,6 +388,40 @@ export function EnrichedEmailList() {
     router.push('/emailList');
   };
 
+  const handleCategoryUpdate = (emailId: string, newCategory: string) => {
+    const appUserId = localStorage.getItem('appUserId');
+    const activeEmail = localStorage.getItem('activeEmail');
+    
+    if (!appUserId || !activeEmail) {
+      toast.error('Missing user information');
+      return;
+    }
+
+    // Update local state immediately for responsive UI
+    setEmails(prevEmails => 
+      prevEmails.map(email => 
+        email.id === emailId 
+          ? { ...email, aiMeta: { ...email.aiMeta, category: newCategory } }
+          : email
+      )
+    );
+
+    // Update selected email if it's the one being updated
+    if (selectedEmail?.id === emailId) {
+      setSelectedEmail(prev => prev ? { ...prev, aiMeta: { ...prev.aiMeta, category: newCategory } } : null);
+    }
+
+    // Send update to backend
+    emitMailEvent.updateEmailCategory({
+      appUserId,
+      email: activeEmail,
+      messageId: emailId,
+      category: newCategory
+    });
+
+    toast.success('Category updated successfully');
+  };
+
   const getEnrichmentStatus = (email: EnrichedEmail) => {
     if (email.aiMeta?.error) {
       return { icon: <AlertCircle className="h-3 w-3 text-destructive" />, text: email.aiMeta.error };
@@ -424,7 +492,7 @@ export function EnrichedEmailList() {
                       }`}
                       style={{ backgroundColor: selectedCategory === category.name ? undefined : category.color + '20' }}
                     >
-                      {category.name}
+                      {category.label}
                     </button>
                   ))}
                 </div>
@@ -496,12 +564,14 @@ export function EnrichedEmailList() {
                     onClick={() => handleEmailClick(email)}
                     className={`p-4 cursor-pointer hover:bg-accent/50 transition-colors ${
                       selectedEmail?.id === email.id ? 'bg-accent' : ''
-                    }`}
+                    } ${!email.read ? 'border-l-4 border-primary bg-primary/5' : ''}`}
                   >
                     <div className="flex flex-col">
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-2">
-                          <p className="text-sm font-medium text-card-foreground truncate">
+                          <p className={`text-sm font-medium text-card-foreground truncate ${
+                            !email.read ? 'font-semibold' : ''
+                          }`}>
                             {email.from.split('<')[0]}
                           </p>
                           {email.aiMeta?.priority && (
@@ -510,9 +580,34 @@ export function EnrichedEmailList() {
                             </span>
                           )}
                           {email.aiMeta?.category && (
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${getCategoryStyle()}`}>
-                              {email.aiMeta.category}
-                            </span>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <span 
+                                  className={`text-xs px-2 py-0.5 rounded-full ${getCategoryStyle()} cursor-pointer hover:opacity-80`}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {categories.find(c => c.name === email.aiMeta.category)?.label || email.aiMeta.category}
+                                </span>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start">
+                                {categories.map(category => (
+                                  <DropdownMenuItem
+                                    key={category.name}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCategoryUpdate(email.id, category.name);
+                                    }}
+                                    className="flex items-center gap-2"
+                                  >
+                                    <div 
+                                      className="w-3 h-3 rounded-full" 
+                                      style={{ backgroundColor: category.color }}
+                                    />
+                                    {category.label}
+                                  </DropdownMenuItem>
+                                ))}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           )}
                           {email.aiMeta?.sentiment && (
                             <span className={`text-xs ${getSentimentStyle(email.aiMeta.sentiment)}`}>
@@ -521,10 +616,12 @@ export function EnrichedEmailList() {
                           )}
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          {new Date(email.timestamp).toLocaleTimeString()}
+                          {new Date(email.timestamp).toLocaleDateString()} {new Date(email.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </p>
                       </div>
-                      <p className="text-sm font-semibold text-card-foreground mb-2">
+                      <p className={`text-sm text-card-foreground mb-2 ${
+                        !email.read ? 'font-semibold' : 'font-medium'
+                      }`}>
                         {email.subject}
                       </p>
                       <div className="flex items-center gap-1.5">

@@ -33,7 +33,7 @@ import { useSocket } from '@/contexts/SocketContext'
 import { ComposeFAB } from '@/components/ComposeFAB'
 import { Skeleton } from "@/components/ui/skeleton"
 import { Counter } from "@/components/ui/counter";
-import { cn } from "@/lib/utils";
+import { cn, parseEmailAddresses } from "@/lib/utils";
 import { getCategories, updateCategories, type Category } from '@/lib/api/categories'
 import { CategoryModal } from '@/components/CategoryModal'
 
@@ -88,7 +88,6 @@ export default function DashboardPage() {
   const [userEmail, setUserEmail] = useState<string>('')
   const { socket, isConnected, addEventHandler, removeEventHandler } = useSocket()
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
-  const [userCategories, setUserCategories] = useState<Category[]>([])
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(true)
   const [isInitialLoad, setIsInitialLoad] = useState(true)
 
@@ -426,8 +425,7 @@ export default function DashboardPage() {
     if (isInitialLoad) {
       const showCategoryModal = async () => {
         try {
-          const categories = await getCategories()
-          setUserCategories(categories)
+          await getCategories() // Just fetch to ensure categories exist
           setIsCategoryModalOpen(true)
           setShowSetupWizard(false)
         } catch (error) {
@@ -694,8 +692,7 @@ export default function DashboardPage() {
 
   const handleSaveCategories = async (categories: Category[]) => {
     try {
-      const updatedCategories = await updateCategories(categories)
-      setUserCategories(updatedCategories)
+      await updateCategories(categories)
       toast.success('Categories updated successfully')
       setIsCategoryModalOpen(false)
       // Show setup wizard only after categories are saved
@@ -747,7 +744,6 @@ export default function DashboardPage() {
           isOpen={isCategoryModalOpen}
           onClose={() => setIsCategoryModalOpen(false)}
           onSave={handleSaveCategories}
-          initialCategories={userCategories}
         />
       </div>
     );
@@ -868,96 +864,113 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Folders */}
-        <div className="w-64 border-r p-4">
-          {/* AI-Enhanced View Button */}
-          <Button 
-            variant="outline" 
-            className="w-full mb-4 flex items-center justify-center gap-2"
-            onClick={() => router.push('/mail')}
-          >
-            <Sparkles className="h-4 w-4" />
-            AI-Enhanced View
-          </Button>
-
-          <div className="space-y-2">
-            {folders.map(folder => (
-              <button
-                key={folder.id}
-                onClick={() => handleFolderClick(folder.id)}
-                className={`w-full rounded p-2 text-left hover:bg-accent ${
-                  currentFolder === folder.id ? 'bg-accent' : ''
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{folder.displayName}</span>
-                    {folder.unreadItemCount > 0 && (
-                      <Counter
-                        value={folder.unreadItemCount}
-                        className="bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded-full"
-                      />
-                    )}
-                  </div>
-                  <span className="text-xs text-muted-foreground">
-                    <Counter
-                      value={folder.totalItemCount || 0}
-                      className="text-muted-foreground"
-                    />
-                  </span>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto h-full p-4">
-          {isLoadingMessages ? (
-            <EmailListSkeleton />
-          ) : messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-              <p>No messages in this folder</p>
-            </div>
-          ) : (
-            <div className="divide-y h-full">
-              {messages.map((message) => (
-                <Link 
-                  href={`/email/${message.id}`} 
-                  key={`message-${message.id}`}
-                  onClick={(e) => handleEmailClick(message, e)}
-                  className="block"
+              {/* Folders */}
+              <div className="w-64 border-r p-4">
+                {/* AI-Enhanced View Button */}
+                <Button 
+                  variant="outline" 
+                  className="w-full mb-4 flex items-center justify-center gap-2"
+                  onClick={() => router.push('/mail')}
                 >
-                  <Card 
-                    className={`mb-4 p-4 cursor-pointer relative hover:bg-accent/50 group ${
-                      !message.read ? 'border-l-4 border-primary' : ''
-                    }`}
-                  >
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="font-semibold flex items-center gap-2">
-                          {message.from}
-                          {message.important && (
-                            <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                  <Sparkles className="h-4 w-4" />
+                  AI-Enhanced View
+                </Button>
+
+                <div className="space-y-2">
+                  {folders.map(folder => (
+                    <button
+                      key={folder.id}
+                      onClick={() => handleFolderClick(folder.id)}
+                      className={`w-full rounded p-2 text-left hover:bg-accent ${
+                        currentFolder === folder.id ? 'bg-accent' : ''
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">{folder.displayName}</span>
+                          {folder.unreadItemCount > 0 && (
+                            <Counter
+                              value={folder.unreadItemCount}
+                              className="bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded-full"
+                            />
                           )}
                         </div>
+                        <span className="text-xs text-muted-foreground">
+                          <Counter
+                            value={folder.totalItemCount || 0}
+                            className="text-muted-foreground"
+                          />
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto h-full p-4">
+                {isLoadingMessages ? (
+                  <EmailListSkeleton />
+                ) : messages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                    <p>No messages in this folder</p>
+                  </div>
+                ) : (
+                  <div className="h-full">
+                    {messages.map((message) => (
+                      <Link 
+                        href={`/email/${message.id}`} 
+                        key={`message-${message.id}`}
+                        onClick={(e) => handleEmailClick(message, e)}
+                        className="block"
+                      >
+                        <Card 
+                          className={`mb-4 p-4 cursor-pointer relative hover:bg-accent/50 group ${
+                            !message.read ? 'border-l-4 border-primary' : ''
+                          }`}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="font-semibold flex items-center gap-2">
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span>
+                                        {(() => {
+                                          const fromEmails = parseEmailAddresses(message.from);
+                                          return fromEmails.length > 0 ? fromEmails[0].name || fromEmails[0].email : message.from;
+                                        })()}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>{(() => {
+                                        const fromEmails = parseEmailAddresses(message.from);
+                                        return fromEmails.length > 0 ? fromEmails[0].email : message.from;
+                                      })()}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                                {message.important && (
+                            <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                                )}
+                              </div>
                         <div className="text-lg">{message.subject}</div>
                         <div className="mt-2 text-muted-foreground line-clamp-2">{message.preview}</div>
-                      </div>
+                              </div>
                       <div className="flex items-center gap-2">
                         <div className="text-sm text-muted-foreground">
                           {new Date(message.timestamp).toLocaleString()}
-                        </div>
+                              </div>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button 
-                              variant="ghost" 
+                                <Button
+                                  variant="ghost"
                               size="icon"
                               className="opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
+                                >
                               <MoreVertical className="h-4 w-4" />
                               <span className="sr-only">Open menu</span>
-                            </Button>
+                                </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             {!message.read && (
@@ -977,42 +990,41 @@ export default function DashboardPage() {
                               {message.important ? 'Remove Important' : 'Mark as Important'}
                             </DropdownMenuItem>
                             <DropdownMenuItem 
-                              onClick={(e) => handleDelete(message, e)}
+                                  onClick={(e) => handleDelete(message, e)}
                               className="text-red-500 focus:text-red-500"
-                            >
+                                >
                               <Trash2 className="h-4 w-4 mr-2" />
                               Delete
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </div>
-                    </div>
-                  </Card>
-                </Link>
-              ))}
-              
-              {hasMoreMessages && (
+                            </div>
+                          </div>
+                        </Card>
+                      </Link>
+                    ))}
+                    
+                    {hasMoreMessages && (
                 <div className="mt-4 flex justify-center">
-                  <Button 
-                    onClick={handleLoadMore}
-                    disabled={isLoadingMore}
-                    variant="outline"
-                  >
+                        <Button
+                          onClick={handleLoadMore}
+                          disabled={isLoadingMore}
+                          variant="outline"
+                        >
                     {isLoadingMore ? 'Loading...' : 'Load More Messages'}
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
         </div>
-      </div>
       <ComposeFAB />
-      <CategoryModal
-        isOpen={isCategoryModalOpen}
-        onClose={() => setIsCategoryModalOpen(false)}
-        onSave={handleSaveCategories}
-        initialCategories={userCategories}
-      />
+        <CategoryModal
+          isOpen={isCategoryModalOpen}
+          onClose={() => setIsCategoryModalOpen(false)}
+          onSave={handleSaveCategories}
+        />
     </div>
   )
 }

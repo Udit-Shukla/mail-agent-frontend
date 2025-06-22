@@ -53,6 +53,20 @@ type SocketEventHandlers = {
   'mail:new': (message: MailMessage) => void;
   'mail:syncComplete': () => void;
   'mail:deleted': (data: { messageId: string }) => void;
+  'mail:categoryUpdated': (data: { 
+    messageId: string; 
+    category: string; 
+    aiMeta: {
+      summary: string;
+      category: string;
+      priority: 'urgent' | 'high' | 'medium' | 'low';
+      sentiment: 'positive' | 'negative' | 'neutral';
+      actionItems: string[];
+      enrichedAt: string;
+      version: string;
+      error?: string;
+    };
+  }) => void;
   'mail:enrichmentStatus': (data: { 
     messageId: string; 
     status: 'queued' | 'analyzing' | 'completed' | 'error';
@@ -250,6 +264,23 @@ export const initializeSocket = (appUserId: string, email?: string): Socket => {
     }) => {
       eventHandlers['mail:enrichmentStatus']?.(data);
     });
+
+    socket.on('mail:categoryUpdated', (data: { 
+      messageId: string; 
+      category: string; 
+      aiMeta: {
+        summary: string;
+        category: string;
+        priority: 'urgent' | 'high' | 'medium' | 'low';
+        sentiment: 'positive' | 'negative' | 'neutral';
+        actionItems: string[];
+        enrichedAt: string;
+        version: string;
+        error?: string;
+      };
+    }) => {
+      eventHandlers['mail:categoryUpdated']?.(data);
+    });
   }
 
   return socket;
@@ -303,5 +334,8 @@ export const emitMailEvent = {
   },
   deleteMessage: (data: { appUserId: string; email: string; messageId: string }) => {
     socket?.emit('mail:delete', data);
+  },
+  updateEmailCategory: (data: { appUserId: string; email: string; messageId: string; category: string }) => {
+    socket?.emit('mail:updateCategory', data);
   }
 };

@@ -4,7 +4,6 @@ import { SiGmail } from 'react-icons/si'
 import { PiMicrosoftOutlookLogoDuotone } from 'react-icons/pi'
 import { useState } from 'react'
 import { CategoryModal } from "@/components/CategoryModal"
-import { type Category } from "@/lib/api/categories"
 import { toast } from "sonner"
 
 interface SetupWizardProps {
@@ -14,7 +13,6 @@ interface SetupWizardProps {
 
 export function SetupWizard({ onAddAccount, onSkip }: SetupWizardProps) {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false)
-  const [categories, setCategories] = useState<Category[]>([])
 
   const handleAddAccount = () => {
     // Show category modal after account connection
@@ -22,9 +20,8 @@ export function SetupWizard({ onAddAccount, onSkip }: SetupWizardProps) {
     onAddAccount()
   }
 
-  const handleSaveCategories = async (updatedCategories: Category[]) => {
+  const handleSaveCategories = async () => {
     try {
-      setCategories(updatedCategories)
       toast.success('Categories saved successfully')
       setIsCategoryModalOpen(false)
       onSkip() // Navigate to dashboard after saving categories
@@ -78,7 +75,6 @@ export function SetupWizard({ onAddAccount, onSkip }: SetupWizardProps) {
         isOpen={isCategoryModalOpen}
         onClose={() => setIsCategoryModalOpen(false)}
         onSave={handleSaveCategories}
-        initialCategories={categories}
       />
     </div>
   )

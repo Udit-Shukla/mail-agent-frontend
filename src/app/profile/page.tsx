@@ -11,7 +11,8 @@ import {
   ArrowLeft,
   Plus,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Unlink
 } from 'lucide-react';
 import { PiMicrosoftOutlookLogoDuotone } from 'react-icons/pi';
 import { SiGmail } from 'react-icons/si';
@@ -21,6 +22,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { IoMdLogOut } from 'react-icons/io';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -125,10 +137,44 @@ export default function ProfilePage() {
     return provider === 'outlook' ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800';
   };
 
+  const handleUnlinkAccount = async (email: string) => {
+    try {
+      const appUserId = localStorage.getItem('appUserId');
+      if (!appUserId) {
+        toast.error('User not authenticated');
+        return;
+      }
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/account/unlink`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          appUserId,
+          email
+        }),
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to unlink account');
+      }
+
+      // Refresh profile data
+      const data = await getUserProfile();
+      setProfile(data);
+      toast.success('Account unlinked successfully');
+    } catch (error) {
+      console.error('Error unlinking account:', error);
+      toast.error('Failed to unlink account');
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
-        <div className="max-w-4xl mx-auto space-y-6">
+        <div className="space-y-1">
           <div className="flex items-center gap-4">
             <Skeleton className="h-8 w-8" />
             <Skeleton className="h-8 w-32" />
@@ -146,7 +192,7 @@ export default function ProfilePage() {
   if (error || !profile) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
-        <div className="max-w-4xl mx-auto">
+        <div>
           <div className="flex items-center gap-4 mb-6">
             <Button variant="ghost" onClick={() => router.back()}>
               <ArrowLeft className="h-4 w-4 mr-2" />
@@ -170,7 +216,7 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -315,9 +361,42 @@ export default function ProfilePage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <CheckCircle className="h-4 w-4 text-green-500" />
-                      {/* <Button variant="ghost" size="sm" onClick={() => window.open(account.email, '_blank')}>
-                        <ExternalLink className="h-4 w-4" />
-                      </Button> */}
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Unlink className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Unlink Account</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to unlink <strong>{account.email}</strong>? 
+                              This action will:
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <div className="px-6">
+                            <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
+                              <li>Remove the account from your profile</li>
+                              <li>Delete all emails associated with this account from the database</li>
+                              <li>This action cannot be undone</li>
+                            </ul>
+                          </div>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction 
+                              onClick={() => handleUnlinkAccount(account.email)}
+                              className="bg-red-500 hover:bg-red-600"
+                            >
+                              Unlink Account
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </div>
                   </div>
                 ))}
@@ -339,14 +418,19 @@ export default function ProfilePage() {
               {profile.user.categories.map((category, index) => (
                 <div
                   key={index}
-                  className="flex items-center gap-2 p-3 border rounded-lg"
+                  className="flex flex-col gap-2 p-3 border rounded-lg"
                   style={{ borderLeftColor: category.color, borderLeftWidth: '4px' }}
                 >
-                  <div
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: category.color }}
-                  />
-                  <span className="text-sm font-medium">{category.name}</span>
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: category.color }}
+                    />
+                    <span className="text-sm font-medium">{category.label}</span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {category.description}
+                  </div>
                 </div>
               ))}
             </div>

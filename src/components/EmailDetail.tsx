@@ -10,13 +10,26 @@ import {
   File,
   Download
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, parseEmailAddresses } from '@/lib/utils';
 import { emitMailEvent } from '@/lib/socket';
 import { useSocket } from '@/contexts/SocketContext';
 import { EmailMessage } from '@/types/email';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { useCategory } from '@/contexts/CategoryContext';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 interface EmailMeta {
   summary: string;
@@ -58,6 +71,7 @@ interface Props {
 export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
   const router = useRouter();
   const { socket, isConnected } = useSocket();
+  const { categories } = useCategory();
   const [isEnriching, setIsEnriching] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
@@ -180,8 +194,23 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
       }
     });
 
+    // Listen for category update responses
+    socket.on('mail:categoryUpdated', (data: {
+      messageId: string;
+      category: string;
+      aiMeta: EmailMeta;
+    }) => {
+      console.log('🏷️ Category updated:', data);
+      if (data.messageId === email.id) {
+        // Update the email with the new aiMeta
+        // Note: This will trigger a re-render with the updated category
+        console.log('✅ Category updated for current email');
+      }
+    });
+
     return () => {
       socket.off('mail:enrichmentStatus');
+      socket.off('mail:categoryUpdated');
     };
   }, [socket, isConnected, email.id]);
 
@@ -241,6 +270,26 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
     }
   };
 
+  const handleCategoryUpdate = (newCategory: string) => {
+    const appUserId = localStorage.getItem('appUserId');
+    const activeEmail = localStorage.getItem('activeEmail');
+    
+    if (!appUserId || !activeEmail) {
+      toast.error('Missing user information');
+      return;
+    }
+
+    // Send update to backend
+    emitMailEvent.updateEmailCategory({
+      appUserId,
+      email: activeEmail,
+      messageId: email.id,
+      category: newCategory
+    });
+
+    toast.success('Category updated successfully');
+  };
+
   // Listen for delete confirmation
   useEffect(() => {
     if (!socket || !isConnected) return;
@@ -296,7 +345,24 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
           </div>
         </div>
         <div className="mt-2 flex items-center text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">{email.from}</span>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="font-medium text-foreground">
+                  {(() => {
+                    const fromEmails = parseEmailAddresses(email.from);
+                    return fromEmails.length > 0 ? fromEmails[0].name || fromEmails[0].email : email.from;
+                  })()}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{(() => {
+                  const fromEmails = parseEmailAddresses(email.from);
+                  return fromEmails.length > 0 ? fromEmails[0].email : email.from;
+                })()}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <span className="mx-2">•</span>
           <time>{format(new Date(email.timestamp), 'MMM d, yyyy h:mm a')}</time>
         </div>
@@ -306,7 +372,31 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
               {email.aiMeta.priority}
             </span>
             <span className={`text-xs ${getCategoryStyle()}`}>
-              {email.aiMeta.category}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <span className="cursor-pointer hover:opacity-80">
+                    {(() => {
+                      const category = categories.find(c => c.name === email.aiMeta?.category);
+                      return category ? category.label : email.aiMeta?.category;
+                    })()}
+                  </span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  {categories.map(category => (
+                    <DropdownMenuItem
+                      key={category.name}
+                      onClick={() => handleCategoryUpdate(category.name)}
+                      className="flex items-center gap-2"
+                    >
+                      <div 
+                        className="w-3 h-3 rounded-full" 
+                        style={{ backgroundColor: category.color }}
+                      />
+                      {category.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </span>
             <span className={`text-xs ${getSentimentColor(email.aiMeta.sentiment)}`}>
               {email.aiMeta.sentiment}
@@ -316,7 +406,7 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
       </div>
 
       {/* AI Insights Panel */}
-      <div className="bg-muted/50 px-4 border-b">
+      <div className="bg-muted/50 px-4 py-2 border-b">
         <div className="flex items-center justify-between mb-1">
           <h3 className="text-sm font-medium">AI Insights</h3>
           <button
@@ -363,8 +453,8 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
                 <div className="text-xs font-medium mb-1">Action Items</div>
                 <ul className="space-y-1">
                   {email.aiMeta.actionItems.map((item: string, index: number) => (
-                    <li key={index} className="text-sm text-muted-foreground flex items-start space-x-2">
-                      <span className="text-muted-foreground mt-1">•</span>
+                    <li key={index} className="text-sm text-muted-foreground flex items-center space-x-2">
+                      <span className="text-primary flex-shrink-0">→</span>
                       <span className="flex-1">{item}</span>
                     </li>
                   ))}
@@ -378,7 +468,7 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
       {/* Email Content */}
       <div className="flex-1 p-4 overflow-auto">
         <div className="border-t pt-2">
-          <div className="mt-6">
+          <div className="mt-1">
             <button
               className="text-sm text-primary underline mb-2"
               onClick={() => {

@@ -23,13 +23,19 @@ import {
 } from 'lucide-react'
 import { useSocket } from '@/contexts/SocketContext'
 import { emitMailEvent } from '@/lib/socket'
-import { cn } from '@/lib/utils'
+import { cn, parseEmailAddresses } from '@/lib/utils'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 interface EmailDetails {
   id: string;
@@ -292,14 +298,31 @@ export default function EmailPage() {
       {/* Email Header */}
       <div className="bg-card rounded-lg border p-6 mb-6">
         <div className="flex items-start justify-between mb-4">
-          <div className="flex items-start gap-4">
+          <div className="flex items-center gap-4">
             <Avatar className="h-10 w-10">
-              <Mail className="h-6 w-6" />
+              <Mail className="ml-2 h-6 w-6" />
             </Avatar>
             <div>
               <h1 className="text-2xl font-semibold mb-2">{email.subject}</h1>
               <div className="flex items-center gap-2">
-                <p className="font-medium">{email.from}</p>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <p className="font-medium">
+                        {(() => {
+                          const fromEmails = parseEmailAddresses(email.from);
+                          return fromEmails.length > 0 ? fromEmails[0].name || fromEmails[0].email : email.from;
+                        })()}
+                      </p>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{(() => {
+                        const fromEmails = parseEmailAddresses(email.from);
+                        return fromEmails.length > 0 ? fromEmails[0].email : email.from;
+                      })()}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 <span className="text-muted-foreground">•</span>
                 <p className="text-sm text-muted-foreground">
                   {new Date(email.timestamp).toLocaleString()}
@@ -312,16 +335,65 @@ export default function EmailPage() {
         <div className="space-y-2 text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <span className="font-medium text-foreground">From:</span>
-            {email.from}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    {(() => {
+                      const fromEmails = parseEmailAddresses(email.from);
+                      return fromEmails.length > 0 ? fromEmails[0].name || fromEmails[0].email : email.from;
+                    })()}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{(() => {
+                    const fromEmails = parseEmailAddresses(email.from);
+                    return fromEmails.length > 0 ? fromEmails[0].email : email.from;
+                  })()}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-foreground">To:</span>
-            {email.to}
-          </div>
+          {email.to && (
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-foreground">To:</span>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      {parseEmailAddresses(email.to)
+                        .map(parsedEmail => parsedEmail.name || parsedEmail.email)
+                        .join(', ')}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{parseEmailAddresses(email.to)
+                      .map(parsedEmail => parsedEmail.email)
+                      .join(', ')}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          )}
           {email.cc && (
             <div className="flex items-center gap-2">
               <span className="font-medium text-foreground">Cc:</span>
-              {email.cc}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      {parseEmailAddresses(email.cc)
+                        .map(parsedEmail => parsedEmail.name || parsedEmail.email)
+                        .join(', ')}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{parseEmailAddresses(email.cc)
+                      .map(parsedEmail => parsedEmail.email)
+                      .join(', ')}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           )}
         </div>

@@ -58,7 +58,7 @@ function SortableCategory({ category, isVisible, onToggleVisibility }: SortableC
         className="flex-1 px-2 py-1 rounded"
         style={{ backgroundColor: category.color + '20' }}
       >
-        {category.name}
+        {category.label}
       </div>
       <button
         onClick={() => category._id && onToggleVisibility(category._id)}
