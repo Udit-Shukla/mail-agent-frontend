@@ -52,8 +52,7 @@ export default function LoginPage() {
       
       const res = await axios.post(getApiUrl('user/login'), values)
       
-      // Store auth info in both localStorage and cookies
-      localStorage.setItem('token', res.data.token)
+      // Store auth info in localStorage
       localStorage.setItem('appUserId', res.data.appUserId)
       localStorage.setItem('userEmail', values.email)
       
@@ -63,7 +62,7 @@ export default function LoginPage() {
       toast.dismiss()
       toast.success('Welcome back!')
       
-      window.location.href = '/dashboard'
+      router.replace('/dashboard')
     } catch (err) {
       toast.dismiss()
       const error = err as AxiosError<{ error: string }>

@@ -64,8 +64,7 @@ export default function RegisterPage() {
         password: values.password
       })
       
-      // Store auth info in both localStorage and cookies
-      localStorage.setItem('token', res.data.token)
+      // Store auth info in localStorage
       localStorage.setItem('appUserId', res.data.appUserId)
       localStorage.setItem('userEmail', values.email)
       
@@ -75,7 +74,7 @@ export default function RegisterPage() {
       toast.dismiss()
       toast.success('Account created successfully!')
       
-      window.location.href = '/emailList'
+      router.replace('/emailList')
     } catch (err) {
       toast.dismiss()
       const error = err as AxiosError<{ error: string }>

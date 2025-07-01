@@ -103,7 +103,10 @@ export default function DashboardPage() {
       setIsLoading(true)
 
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/account/accounts?appUserId=${appUserId}`)
+        const apiBase = process.env.NODE_ENV === 'production'
+          ? (process.env.NEXT_PUBLIC_API_URL || 'https://mails.worxstream.io')
+          : '/api';
+        const res = await fetch(`${apiBase}/account/accounts?appUserId=${appUserId}`)
         if (!res.ok) throw new Error(`API returned ${res.status}`)
         const data = await res.json()
         const apiAccounts = data.accounts || []

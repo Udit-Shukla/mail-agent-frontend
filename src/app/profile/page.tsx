@@ -78,7 +78,9 @@ export default function ProfilePage() {
     const top = window.screenY + (window.outerHeight - height) / 2
 
     // Create the OAuth URL with callback
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+    const apiUrl = process.env.NODE_ENV === 'production'
+      ? (process.env.NEXT_PUBLIC_API_URL || 'https://mails.worxstream.io')
+      : '/api';
     const callbackUrl = `${window.location.origin}/auth/callback`
     const authUrl = `${apiUrl}/auth/outlook/login?appUserId=${appUserId}&callbackUrl=${encodeURIComponent(callbackUrl)}`
 

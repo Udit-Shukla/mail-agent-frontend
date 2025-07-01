@@ -1,6 +1,9 @@
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const isProduction = process.env.NODE_ENV === 'production';
+const API_URL = isProduction
+  ? (process.env.NEXT_PUBLIC_API_URL || 'https://mails.worxstream.io')
+  : '/api';
 
 export interface EmailStats {
   total: number;
@@ -31,26 +34,19 @@ export const getEmailStats = async (folderId?: string): Promise<EmailStats> => {
   try {
     const appUserId = localStorage.getItem('appUserId');
     const activeEmail = localStorage.getItem('activeEmail');
-    const token = localStorage.getItem('token');
-    if (!appUserId || !token || !activeEmail) {
-      throw new Error('appUserId, token, or activeEmail not found');
+    if (!appUserId || !activeEmail) {
+      throw new Error('appUserId or activeEmail not found');
     }
-
     // Use provided folderId or fallback to 'Inbox'
     const actualFolderId = folderId || 'Inbox';
     console.log('📊 API: Using folderId for stats:', actualFolderId);
-
     const params: { appUserId: string; email: string; folderId: string } = { 
       appUserId, 
       email: activeEmail, 
       folderId: actualFolderId 
     };
-
     const response = await axios.get(`${API_URL}/email-analytics/stats`, {
       params,
-      headers: {
-        Authorization: `Bearer ${token}`
-      },
       withCredentials: true
     });
     return response.data;
@@ -64,26 +60,19 @@ export const getEmailAnalytics = async (folderId?: string): Promise<EmailAnalyti
   try {
     const appUserId = localStorage.getItem('appUserId');
     const activeEmail = localStorage.getItem('activeEmail');
-    const token = localStorage.getItem('token');
-    if (!appUserId || !token || !activeEmail) {
-      throw new Error('appUserId, token, or activeEmail not found');
+    if (!appUserId || !activeEmail) {
+      throw new Error('appUserId or activeEmail not found');
     }
-
     // Use provided folderId or fallback to 'Inbox'
     const actualFolderId = folderId || 'Inbox';
     console.log('📊 API: Using folderId for analytics:', actualFolderId);
-
     const params: { appUserId: string; email: string; folderId: string } = { 
       appUserId, 
       email: activeEmail, 
       folderId: actualFolderId 
     };
-
     const response = await axios.get(`${API_URL}/email-analytics/analytics`, {
       params,
-      headers: {
-        Authorization: `Bearer ${token}`
-      },
       withCredentials: true
     });
     return response.data;
@@ -117,27 +106,20 @@ export const getUnreadEmailsSummary = async (folderId?: string, timePeriod: stri
   try {
     const appUserId = localStorage.getItem('appUserId');
     const activeEmail = localStorage.getItem('activeEmail');
-    const token = localStorage.getItem('token');
-    if (!appUserId || !token || !activeEmail) {
-      throw new Error('appUserId, token, or activeEmail not found');
+    if (!appUserId || !activeEmail) {
+      throw new Error('appUserId or activeEmail not found');
     }
-
     // Use provided folderId or fallback to 'Inbox'
     const actualFolderId = folderId || 'Inbox';
     console.log('📊 API: Using folderId for unread summary:', actualFolderId, 'timePeriod:', timePeriod);
-
     const params: { appUserId: string; email: string; folderId: string; timePeriod: string } = { 
       appUserId, 
       email: activeEmail, 
       folderId: actualFolderId,
       timePeriod
     };
-
     const response = await axios.get(`${API_URL}/email-analytics/unread-summary`, {
       params,
-      headers: {
-        Authorization: `Bearer ${token}`
-      },
       withCredentials: true
     });
     return response.data;

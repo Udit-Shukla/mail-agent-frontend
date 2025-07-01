@@ -24,17 +24,15 @@ export function CategoryProvider({ children }: { children: React.ReactNode }) {
     try {
       console.log('🔄 loadCategories called');
       // Check if user is authenticated and has an active email
-      const token = localStorage.getItem('token');
       const appUserId = localStorage.getItem('appUserId');
       const activeEmail = localStorage.getItem('activeEmail');
       
       console.log('🔍 loadCategories auth check:', { 
-        hasToken: !!token, 
         hasAppUserId: !!appUserId, 
         activeEmail 
       });
       
-      if (!token || !appUserId || !activeEmail) {
+      if (!appUserId || !activeEmail) {
         // User is not authenticated or no active email, don't try to load categories
         console.log('❌ User not authenticated or no active email, skipping category load');
         return;
