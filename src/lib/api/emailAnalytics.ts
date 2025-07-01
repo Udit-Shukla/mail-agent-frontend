@@ -31,9 +31,8 @@ export const getEmailStats = async (folderId?: string): Promise<EmailStats> => {
   try {
     const appUserId = localStorage.getItem('appUserId');
     const activeEmail = localStorage.getItem('activeEmail');
-    const token = localStorage.getItem('token');
-    if (!appUserId || !token || !activeEmail) {
-      throw new Error('appUserId, token, or activeEmail not found');
+    if (!appUserId || !activeEmail) {
+      throw new Error('appUserId or activeEmail not found');
     }
 
     // Use provided folderId or fallback to 'Inbox'
@@ -48,9 +47,6 @@ export const getEmailStats = async (folderId?: string): Promise<EmailStats> => {
 
     const response = await axios.get(`${API_URL}/email-analytics/stats`, {
       params,
-      headers: {
-        Authorization: `Bearer ${token}`
-      },
       withCredentials: true
     });
     return response.data;
@@ -64,9 +60,8 @@ export const getEmailAnalytics = async (folderId?: string): Promise<EmailAnalyti
   try {
     const appUserId = localStorage.getItem('appUserId');
     const activeEmail = localStorage.getItem('activeEmail');
-    const token = localStorage.getItem('token');
-    if (!appUserId || !token || !activeEmail) {
-      throw new Error('appUserId, token, or activeEmail not found');
+    if (!appUserId || !activeEmail) {
+      throw new Error('appUserId or activeEmail not found');
     }
 
     // Use provided folderId or fallback to 'Inbox'
@@ -81,9 +76,6 @@ export const getEmailAnalytics = async (folderId?: string): Promise<EmailAnalyti
 
     const response = await axios.get(`${API_URL}/email-analytics/analytics`, {
       params,
-      headers: {
-        Authorization: `Bearer ${token}`
-      },
       withCredentials: true
     });
     return response.data;
@@ -117,9 +109,8 @@ export const getUnreadEmailsSummary = async (folderId?: string, timePeriod: stri
   try {
     const appUserId = localStorage.getItem('appUserId');
     const activeEmail = localStorage.getItem('activeEmail');
-    const token = localStorage.getItem('token');
-    if (!appUserId || !token || !activeEmail) {
-      throw new Error('appUserId, token, or activeEmail not found');
+    if (!appUserId || !activeEmail) {
+      throw new Error('appUserId or activeEmail not found');
     }
 
     // Use provided folderId or fallback to 'Inbox'
@@ -135,9 +126,6 @@ export const getUnreadEmailsSummary = async (folderId?: string, timePeriod: stri
 
     const response = await axios.get(`${API_URL}/email-analytics/unread-summary`, {
       params,
-      headers: {
-        Authorization: `Bearer ${token}`
-      },
       withCredentials: true
     });
     return response.data;

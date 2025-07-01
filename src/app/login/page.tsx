@@ -6,7 +6,6 @@ import * as z from 'zod'
 import { useRouter } from 'next/navigation'
 import axios, { AxiosError } from 'axios'
 import { toast } from 'sonner'
-import Cookies from 'js-cookie'
 import { getApiUrl } from '@/lib/api'
 import { useState } from 'react'
 import { Eye, EyeOff, Mail, Lock, ArrowRight, Sparkles } from 'lucide-react'
@@ -54,19 +53,8 @@ export default function LoginPage() {
       const res = await axios.post(getApiUrl('user/login'), values)
       
       // Store auth info in both localStorage and cookies
-      localStorage.setItem('token', res.data.token)
       localStorage.setItem('appUserId', res.data.appUserId)
       localStorage.setItem('userEmail', values.email)
-      Cookies.set('token', res.data.token, { 
-        path: '/', 
-        sameSite: 'none',
-        secure: true
-      })
-      Cookies.set('appUserId', res.data.appUserId, { 
-        path: '/', 
-        sameSite: 'none',
-        secure: true
-      })
       
       // Load categories after successful authentication
       await loadCategories()
