@@ -412,7 +412,7 @@ export default function DashboardPage() {
       removeEventHandler('mail:folderMessages', handleFolderMessages);
       removeEventHandler('mail:importantMarked', handleImportantMarked);
     };
-  }, [activeAccount, socket, isConnected, addEventHandler, removeEventHandler]);
+  }, [activeAccount, socket, isConnected, addEventHandler, removeEventHandler, currentFolder, folders.length, initializeFolders, messages, router]);
 
   // Add debug logging for loading state
   useEffect(() => {
@@ -498,7 +498,7 @@ export default function DashboardPage() {
       showCategoryModal()
       setIsInitialLoad(false)
     }
-  }, [isInitialLoad])
+  }, [isInitialLoad, activeAccount, messages])
 
   const handleFolderClick = (folderId: string) => {
     if (folderId === currentFolder) return;

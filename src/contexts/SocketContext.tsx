@@ -165,7 +165,9 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         socketRef.current.disconnect();
         socketRef.current = null;
       }
-      eventHandlersRef.current.clear();
+      // Copy the ref value to a variable for cleanup
+      const handlersMap = eventHandlersRef.current;
+      handlersMap.clear();
     };
   }, []);
 

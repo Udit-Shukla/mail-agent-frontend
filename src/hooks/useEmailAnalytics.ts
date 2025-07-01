@@ -15,6 +15,15 @@ export function useEmailAnalytics(): UseEmailAnalyticsReturn {
   const [currentActiveEmail, setCurrentActiveEmail] = useState<string | null>(null);
 
   const fetchData = async () => {
+    const appUserId = localStorage.getItem('appUserId');
+    const token = localStorage.getItem('token');
+    const activeEmail = localStorage.getItem('activeEmail');
+    if (!appUserId || !token || !activeEmail) {
+      setError(null);
+      setData(null);
+      setIsLoading(false);
+      return;
+    }
     try {
       setError(null);
       setIsLoading(true);

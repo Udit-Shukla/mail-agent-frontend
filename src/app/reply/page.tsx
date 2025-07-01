@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ReplyEmail } from '@/components/ReplyEmail';
 import { LoadingScreen } from '@/components/LoadingScreen';
@@ -8,7 +8,7 @@ import { emitMailEvent } from '@/lib/socket';
 import { useSocket } from '@/contexts/SocketContext';
 import { MailLayout } from '@/components/MailLayout';
 
-export default function ReplyPage() {
+function ReplyPageInner() {
   const searchParams = useSearchParams();
   const [emailData, setEmailData] = useState<{ id: string; subject: string; from: string; to?: string; cc?: string; content?: string; timestamp: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -124,5 +124,13 @@ export default function ReplyPage() {
         <ReplyEmail originalEmail={emailData} replyType={replyType} />
       </div>
     </MailLayout>
+  );
+}
+
+export default function ReplyPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <ReplyPageInner />
+    </Suspense>
   );
 } 
