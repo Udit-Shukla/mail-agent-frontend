@@ -63,8 +63,9 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
   // Fetch analytics data
   const fetchAnalytics = useCallback(async () => {
     const appUserId = localStorage.getItem('appUserId');
+    const token = localStorage.getItem('token');
     const activeEmail = localStorage.getItem('activeEmail');
-    if (!appUserId || !activeEmail) {
+    if (!appUserId || !token || !activeEmail) {
       setError(null);
       setAnalyticsData(null);
       setIsLoading(false);
@@ -90,8 +91,9 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
   // Fetch stats data
   const fetchStats = useCallback(async () => {
     const appUserId = localStorage.getItem('appUserId');
+    const token = localStorage.getItem('token');
     const activeEmail = localStorage.getItem('activeEmail');
-    if (!appUserId || !activeEmail) {
+    if (!appUserId || !token || !activeEmail) {
       setStatsError(null);
       setStatsData(null);
       setIsStatsLoading(false);
@@ -117,8 +119,9 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
   // Fetch unread summary data
   const fetchUnreadSummary = useCallback(async (timePeriod: string = '24h') => {
     const appUserId = localStorage.getItem('appUserId');
+    const token = localStorage.getItem('token');
     const activeEmail = localStorage.getItem('activeEmail');
-    if (!appUserId || !activeEmail) {
+    if (!appUserId || !token || !activeEmail) {
       setUnreadError(null);
       setUnreadSummaryData(null);
       setIsUnreadLoading(false);
@@ -144,8 +147,9 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
   // Fetch all data in parallel
   const fetchAllData = useCallback(async () => {
     const appUserId = localStorage.getItem('appUserId');
+    const token = localStorage.getItem('token');
     const activeEmail = localStorage.getItem('activeEmail');
-    if (!appUserId || !activeEmail) {
+    if (!appUserId || !token || !activeEmail) {
       setIsLoading(false);
       setIsStatsLoading(false);
       setIsUnreadLoading(false);

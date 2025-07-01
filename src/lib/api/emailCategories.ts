@@ -25,13 +25,24 @@ export interface EmailAccount {
 export const getEmailCategories = async (): Promise<EmailCategory[]> => {
   try {
     const activeEmail = localStorage.getItem('activeEmail');
-    if (!activeEmail) {
-      throw new Error('Active email not found');
+    const token = localStorage.getItem('token');
+    
+    console.log('🔍 getEmailCategories called with:', { activeEmail, hasToken: !!token });
+    
+    if (!activeEmail || !token) {
+      throw new Error('Active email or token not found');
     }
+
+    console.log('📡 Making API call to get email categories...');
     const response = await axios.get(`${API_URL}/email-categories`, {
       params: { email: activeEmail },
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
       withCredentials: true
     });
+
+    console.log('✅ Email categories API response:', response.data);
     return response.data;
   } catch (error) {
     console.error('❌ Error fetching email categories:', error);
@@ -43,15 +54,22 @@ export const getEmailCategories = async (): Promise<EmailCategory[]> => {
 export const updateEmailCategories = async (categories: EmailCategory[]): Promise<{ message: string; categories: EmailCategory[] }> => {
   try {
     const activeEmail = localStorage.getItem('activeEmail');
-    if (!activeEmail) {
-      throw new Error('Active email not found');
+    const token = localStorage.getItem('token');
+    
+    if (!activeEmail || !token) {
+      throw new Error('Active email or token not found');
     }
+
     const response = await axios.put(`${API_URL}/email-categories`, {
       email: activeEmail,
       categories
     }, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
       withCredentials: true
     });
+
     return response.data;
   } catch (error) {
     console.error('Error updating email categories:', error);
@@ -63,15 +81,22 @@ export const updateEmailCategories = async (categories: EmailCategory[]): Promis
 export const addEmailCategory = async (category: EmailCategory): Promise<{ message: string; categories: EmailCategory[] }> => {
   try {
     const activeEmail = localStorage.getItem('activeEmail');
-    if (!activeEmail) {
-      throw new Error('Active email not found');
+    const token = localStorage.getItem('token');
+    
+    if (!activeEmail || !token) {
+      throw new Error('Active email or token not found');
     }
+
     const response = await axios.post(`${API_URL}/email-categories/add`, {
       email: activeEmail,
       category
     }, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
       withCredentials: true
     });
+
     return response.data;
   } catch (error) {
     console.error('Error adding email category:', error);
@@ -83,13 +108,20 @@ export const addEmailCategory = async (category: EmailCategory): Promise<{ messa
 export const deleteEmailCategory = async (categoryName: string): Promise<{ message: string; categories: EmailCategory[] }> => {
   try {
     const activeEmail = localStorage.getItem('activeEmail');
-    if (!activeEmail) {
-      throw new Error('Active email not found');
+    const token = localStorage.getItem('token');
+    
+    if (!activeEmail || !token) {
+      throw new Error('Active email or token not found');
     }
+
     const response = await axios.delete(`${API_URL}/email-categories/${categoryName}`, {
       params: { email: activeEmail },
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
       withCredentials: true
     });
+
     return response.data;
   } catch (error) {
     console.error('Error deleting email category:', error);
@@ -101,12 +133,19 @@ export const deleteEmailCategory = async (categoryName: string): Promise<{ messa
 export const getUserEmailAccounts = async (): Promise<EmailAccount[]> => {
   try {
     const appUserId = localStorage.getItem('appUserId');
-    if (!appUserId) {
-      throw new Error('appUserId not found');
+    const token = localStorage.getItem('token');
+    
+    if (!appUserId || !token) {
+      throw new Error('appUserId or token not found');
     }
+
     const response = await axios.get(`${API_URL}/email-categories/accounts/${appUserId}`, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
       withCredentials: true
     });
+
     return response.data;
   } catch (error) {
     console.error('Error fetching user email accounts:', error);

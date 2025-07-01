@@ -35,10 +35,12 @@ export const getUserProfile = async (): Promise<UserProfile> => {
     if (!appUserId) {
       throw new Error('appUserId not found');
     }
+
     const response = await axios.get(getApiUrl('user/profile'), {
       params: { appUserId },
       withCredentials: true
     });
+    
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
@@ -56,12 +58,16 @@ export const getCategories = async (): Promise<Category[]> => {
   try {
     const appUserId = localStorage.getItem('appUserId');
     const activeEmail = localStorage.getItem('activeEmail');
+    
     if (!appUserId) {
       throw new Error('appUserId not found');
     }
+
     if (!activeEmail) {
       throw new Error('activeEmail not found');
     }
+
+    console.log('Making request to:', getApiUrl('email-categories'));
     const response = await axios.get(getApiUrl('email-categories'), {
       params: { 
         appUserId,
@@ -69,6 +75,8 @@ export const getCategories = async (): Promise<Category[]> => {
       },
       withCredentials: true
     });
+    console.log('Email categories API response:', response.data);
+    
     return response.data || [];
   } catch (error) {
     if (axios.isAxiosError(error)) {
@@ -86,12 +94,16 @@ export const updateCategories = async (categories: Category[]): Promise<Category
   try {
     const appUserId = localStorage.getItem('appUserId');
     const activeEmail = localStorage.getItem('activeEmail');
+    
     if (!appUserId) {
       throw new Error('appUserId not found');
     }
+
     if (!activeEmail) {
       throw new Error('activeEmail not found');
     }
+
+    console.log('Making request to:', getApiUrl('email-categories'));
     const response = await axios.put(getApiUrl('email-categories'), 
       { 
         categories,

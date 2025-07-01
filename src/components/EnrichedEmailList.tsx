@@ -114,7 +114,6 @@ export function EnrichedEmailList() {
   const [showFilters, setShowFilters] = React.useState(false);
   const [categories, setCategories] = React.useState<Category[]>([]);
   const [currentActiveEmail, setCurrentActiveEmail] = React.useState<string | null>(null);
-  const [categoryError, setCategoryError] = React.useState<string | null>(null);
 
   // Watch for changes in activeEmail from localStorage
   React.useEffect(() => {
@@ -151,25 +150,11 @@ export function EnrichedEmailList() {
   React.useEffect(() => {
     const fetchCategories = async () => {
       try {
-        setCategoryError(null);
         const userCategories = await getEmailCategories();
         setCategories(userCategories);
-      } catch (error: unknown) {
+      } catch (error) {
         console.error('Error fetching categories:', error);
-        // Type guard for error
-        if (typeof error === 'object' && error !== null) {
-          const err = error as { response?: { status?: number }, message?: string };
-          if (err.response?.status === 401 || (err.message && err.message.toLowerCase().includes('token'))) {
-            setCategoryError('Access token is missing or invalid. Please log in again.');
-            toast.error('Access token is missing or invalid. Please log in again.');
-          } else {
-            setCategoryError('Failed to load categories');
-            toast.error('Failed to load categories');
-          }
-        } else {
-          setCategoryError('Failed to load categories');
-          toast.error('Failed to load categories');
-        }
+        toast.error('Failed to load categories');
       }
     };
     
@@ -509,16 +494,6 @@ export function EnrichedEmailList() {
       return matchesCategory && matchesPriority && matchesSentiment;
     });
   }, [emails, selectedCategory, selectedPriority, selectedSentiment]);
-
-  // Render error if present
-  if (categoryError) {
-    return (
-      <div className="p-4 text-center text-red-700 bg-red-100 rounded">
-        <AlertCircle className="inline-block mr-2 align-middle" />
-        {categoryError}
-      </div>
-    );
-  }
 
   return (
     <div className="flex h-full bg-background">
