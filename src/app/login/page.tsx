@@ -55,6 +55,7 @@ export default function LoginPage() {
       // Store auth info in localStorage
       localStorage.setItem('appUserId', res.data.appUserId)
       localStorage.setItem('userEmail', values.email)
+      localStorage.setItem('activeEmail', values.email)
       
       // Load categories after successful authentication
       await loadCategories()

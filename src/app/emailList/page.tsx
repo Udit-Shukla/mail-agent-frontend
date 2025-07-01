@@ -676,8 +676,8 @@ export default function DashboardPage() {
     localStorage.removeItem('token')
 
     // Clear the authentication cookie
-    document.cookie = 'appUserId=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT'
-    document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT'
+    document.cookie = 'appUserId=; path=/; domain=.worxstream.io; expires=Thu, 01 Jan 1970 00:00:00 GMT; secure; samesite=none';
+    document.cookie = 'token=; path=/; domain=.worxstream.io; expires=Thu, 01 Jan 1970 00:00:00 GMT; secure; samesite=none';
 
     // Disconnect socket
     disconnectSocket()
