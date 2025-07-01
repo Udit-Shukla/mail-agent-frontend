@@ -74,7 +74,7 @@ export default function LoginPage() {
       toast.dismiss()
       toast.success('Welcome back!')
       
-      router.push('/dashboard')
+      window.location.href = '/dashboard'
     } catch (err) {
       toast.dismiss()
       const error = err as AxiosError<{ error: string }>

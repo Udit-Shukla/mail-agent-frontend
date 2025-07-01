@@ -90,7 +90,7 @@ function AuthCallbackContent() {
           window.close()
         } else {
           toast.success(`Successfully connected ${email}`)
-          router.push('/emailList')
+          window.location.href = '/emailList'
         }
       } catch (err) {
         console.error('Auth callback error:', err)
@@ -100,7 +100,7 @@ function AuthCallbackContent() {
           window.close()
         } else {
           toast.error(error.message || 'Failed to complete authentication')
-          router.push('/emailList')
+          window.location.href = '/emailList'
         }
       }
     }

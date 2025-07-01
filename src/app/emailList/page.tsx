@@ -190,7 +190,7 @@ export default function DashboardPage() {
       });
       return;
     }
-  
+
     const appUserId = localStorage.getItem('appUserId');
     if (!appUserId) {
       console.log('[Debug] No appUserId found');
@@ -199,22 +199,6 @@ export default function DashboardPage() {
     }
 
     console.log('[Debug] Setting up socket handlers for:', activeAccount.email);
-
-    // Reset state when switching accounts
-    setCurrentFolder(null);
-    currentFolderRef.current = null;
-    setMessages([]);
-    setIsLoadingMessages(false);
-    setIsLoading(true);
-
-    // Clear cache for old account if we have a previous account
-    if (folders.length > 0) {
-      console.log('[Debug] Clearing cache for previous account');
-      // The cache will be automatically updated when new folders are fetched
-    }
-
-    // Initialize folders only once when account changes
-    initializeFolders(activeAccount);
 
     // Set up message-related event handlers
     const handleNewMessage = (message: MailMessage) => {
@@ -412,7 +396,23 @@ export default function DashboardPage() {
       removeEventHandler('mail:folderMessages', handleFolderMessages);
       removeEventHandler('mail:importantMarked', handleImportantMarked);
     };
-  }, [activeAccount, socket, isConnected, addEventHandler, removeEventHandler, currentFolder, folders.length, initializeFolders, messages, router]);
+  }, [activeAccount, socket, isConnected, addEventHandler, removeEventHandler]);
+
+  // Reset state and initialize folders when activeAccount changes
+  useEffect(() => {
+    setCurrentFolder(null);
+    currentFolderRef.current = null;
+    setMessages([]);
+    setIsLoadingMessages(false);
+    setIsLoading(true);
+    if (folders.length > 0) {
+      console.log('[Debug] Clearing cache for previous account');
+      // The cache will be automatically updated when new folders are fetched
+    }
+    if (activeAccount) {
+      initializeFolders(activeAccount);
+    }
+  }, [activeAccount]);
 
   // Add debug logging for loading state
   useEffect(() => {

@@ -86,7 +86,7 @@ export default function RegisterPage() {
       toast.dismiss()
       toast.success('Account created successfully!')
       
-      router.push('/dashboard')
+      window.location.href = '/dashboard'
     } catch (err) {
       toast.dismiss()
       const error = err as AxiosError<{ error: string }>
