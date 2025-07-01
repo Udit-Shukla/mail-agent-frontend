@@ -300,7 +300,7 @@ export const ReplyEmail = ({ originalEmail, replyType }: ReplyEmailProps) => {
     }));
   };
 
-  const handleAIGenerated = (content: string, subject?: string) => {
+  const handleAIGenerated = (content: string) => {
     setFormData(prev => ({
       ...prev,
       body: content

@@ -29,7 +29,6 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useSocket } from "@/contexts/SocketContext"
 import { type EmailCategory } from "@/lib/api/emailCategories"
 
 interface SortableCardProps {
@@ -69,7 +68,6 @@ export function CategoryAnalytics() {
   const router = useRouter();
   const { categories, visibleCategories, updateCategoryOrder } = useCategory();
   const { analyticsData, isLoading, error } = useAnalytics();
-  const { socket, isConnected, addEventHandler, removeEventHandler } = useSocket();
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
 
   // Debug logging

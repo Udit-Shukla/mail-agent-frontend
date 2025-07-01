@@ -152,8 +152,12 @@ export const AIGenerationModal = ({
       setCopied(true);
       toast.success('Content copied to clipboard!');
       setTimeout(() => setCopied(false), 2000);
-    } catch (error: any) {
-      toast.error('Failed to copy content',error);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        toast.error('Failed to copy content', { description: error.message });
+      } else {
+        toast.error('Failed to copy content');
+      }
     }
   };
 
