@@ -50,7 +50,7 @@ export default function LoginPage() {
     try {
       toast.loading('Logging in...')
       
-      const res = await axios.post(getApiUrl('user/login'), values)
+      const res = await axios.post(getApiUrl('user/login'), values, { withCredentials: true })
       
       // Store auth info in localStorage
       localStorage.setItem('appUserId', res.data.appUserId)

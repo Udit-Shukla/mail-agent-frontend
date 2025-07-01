@@ -62,7 +62,7 @@ export default function RegisterPage() {
         name: values.name,
         email: values.email,
         password: values.password
-      })
+      }, { withCredentials: true })
       
       // Store auth info in localStorage
       localStorage.setItem('appUserId', res.data.appUserId)
