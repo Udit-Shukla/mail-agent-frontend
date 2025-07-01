@@ -46,6 +46,8 @@ type SocketEventHandlers = {
   'mail:folderMessages': (data: { folderId: string; messages: MailMessage[]; nextLink: string | null; page: number }) => void;
   'mail:message': (message: EmailDetails) => void;
   'mail:sent': (result: { success: boolean; error?: string }) => void;
+  'mail:replied': (result: { messageId: string; success: boolean }) => void;
+  'mail:repliedAll': (result: { messageId: string; success: boolean }) => void;
   'mail:markedRead': (messageId: string) => void;
   'mail:importantMarked': (data: { messageId: string; flag: boolean }) => void;
   'mail:error': (error: string) => void;
@@ -207,6 +209,16 @@ export const initializeSocket = (appUserId: string, email?: string): Socket => {
       eventHandlers['mail:sent']?.(result);
     });
 
+    socket.on('mail:replied', (result: { messageId: string; success: boolean }) => {
+      console.log('📤 Email replied result:', result);
+      eventHandlers['mail:replied']?.(result);
+    });
+
+    socket.on('mail:repliedAll', (result: { messageId: string; success: boolean }) => {
+      console.log('📤 Email replied all result:', result);
+      eventHandlers['mail:repliedAll']?.(result);
+    });
+
     socket.on('mail:markedRead', (messageId: string) => {
       console.log('✓ Marked as read:', messageId);
       eventHandlers['mail:markedRead']?.(messageId);
@@ -319,6 +331,12 @@ export const emitMailEvent = {
   },
   sendEmail: (data: { appUserId: string; email: string; to: string; subject: string; body: string; cc?: string; bcc?: string }) => {
     socket?.emit('mail:send', data);
+  },
+  replyEmail: (data: { appUserId: string; email: string; messageId: string; comment: string; toRecipients?: Array<{ emailAddress: { address: string } }>; ccRecipients?: Array<{ emailAddress: { address: string } }>; bccRecipients?: Array<{ emailAddress: { address: string } }> }) => {
+    socket?.emit('mail:reply', data);
+  },
+  replyAllEmail: (data: { appUserId: string; email: string; messageId: string; comment: string; toRecipients?: Array<{ emailAddress: { address: string } }>; ccRecipients?: Array<{ emailAddress: { address: string } }>; bccRecipients?: Array<{ emailAddress: { address: string } }> }) => {
+    socket?.emit('mail:replyAll', data);
   },
   markRead: (data: { appUserId: string; email: string; messageId: string }) => {
     socket?.emit('mail:markRead', data);

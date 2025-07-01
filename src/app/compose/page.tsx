@@ -1,9 +1,10 @@
 import { ComposeEmail } from '@/components/ComposeEmail';
+import { MailLayout } from '@/components/MailLayout';
 
 export default function ComposePage() {
   return (
-    <div className="container mx-auto">
+    <MailLayout>
       <ComposeEmail />
-    </div>
+    </MailLayout>
   );
 } 

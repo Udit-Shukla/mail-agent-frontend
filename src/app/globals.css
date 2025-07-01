@@ -139,3 +139,99 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Email Content Styles */
+.email-content {
+  @apply text-foreground;
+}
+
+.email-content h1,
+.email-content h2,
+.email-content h3,
+.email-content h4,
+.email-content h5,
+.email-content h6 {
+  @apply font-semibold text-foreground mb-2;
+}
+
+.email-content h1 {
+  @apply text-2xl;
+}
+
+.email-content h2 {
+  @apply text-xl;
+}
+
+.email-content h3 {
+  @apply text-lg;
+}
+
+.email-content p {
+  @apply mb-3 leading-relaxed;
+}
+
+.email-content ul,
+.email-content ol {
+  @apply mb-3 pl-6;
+}
+
+.email-content li {
+  @apply mb-1;
+}
+
+.email-content blockquote {
+  @apply border-l-4 border-muted-foreground pl-4 italic text-muted-foreground;
+}
+
+.email-content a {
+  @apply text-primary underline hover:text-primary/80;
+}
+
+.email-content img {
+  @apply max-w-full h-auto rounded;
+}
+
+.email-content table {
+  @apply w-full border-collapse border border-border;
+}
+
+.email-content th,
+.email-content td {
+  @apply border border-border px-3 py-2 text-left;
+}
+
+.email-content th {
+  @apply bg-muted font-semibold;
+}
+
+.email-content code {
+  @apply bg-muted px-1 py-0.5 rounded text-sm font-mono;
+}
+
+.email-content pre {
+  @apply bg-muted p-3 rounded overflow-x-auto;
+}
+
+/* Plain text email styling */
+.email-content.plain-text {
+  @apply whitespace-pre-wrap font-sans;
+}
+
+/* Responsive email content */
+@media (max-width: 768px) {
+  .email-content {
+    @apply text-sm;
+  }
+  
+  .email-content h1 {
+    @apply text-xl;
+  }
+  
+  .email-content h2 {
+    @apply text-lg;
+  }
+  
+  .email-content h3 {
+    @apply text-base;
+  }
+}

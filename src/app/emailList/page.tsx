@@ -9,7 +9,7 @@ import { mailCache } from '@/lib/cache'
 import { MailFolder, MailMessage, Account, Provider } from '@/lib/types'
 import { toast } from 'sonner'
 import { LoadingScreen } from '@/components/LoadingScreen'
-import { MoreVertical, Star, Sparkles, Trash2, CheckCircle2, BarChart2 } from 'lucide-react'
+import { MoreVertical, Star, Sparkles, Trash2, CheckCircle2, BarChart2, Reply, ReplyAll } from 'lucide-react'
 import { SiGmail} from 'react-icons/si'
 import { PiMicrosoftOutlookLogoDuotone } from "react-icons/pi";
 import { IoMdAdd, IoMdLogOut } from 'react-icons/io'
@@ -36,6 +36,7 @@ import { Counter } from "@/components/ui/counter";
 import { cn, parseEmailAddresses } from "@/lib/utils";
 import { getCategories, updateCategories, type Category } from '@/lib/api/categories'
 import { CategoryModal } from '@/components/CategoryModal'
+import { type EmailCategory } from '@/lib/api/emailCategories'
 
 
 // Extend Window interface to include our custom property
@@ -110,8 +111,14 @@ export default function DashboardPage() {
         setLinkedAccounts(apiAccounts)
         
         if (apiAccounts.length > 0 && setDefault) {
-          setActiveAccount(apiAccounts[0])
-          localStorage.setItem('activeEmail', apiAccounts[0].email)
+          const existing = localStorage.getItem('activeEmail');
+          const found = apiAccounts.find((acc: Account) => acc.email === existing);
+          if (existing && found) {
+            setActiveAccount(found);
+          } else {
+            setActiveAccount(apiAccounts[0]);
+            localStorage.setItem('activeEmail', apiAccounts[0].email);
+          }
         }
       } catch (error) {
         console.error('Failed to fetch accounts:', error)
@@ -137,20 +144,41 @@ export default function DashboardPage() {
       setFolders(cachedFolders);
       
       const inbox = cachedFolders.find(f => f.displayName.toLowerCase() === 'inbox');
-      if (inbox && !currentFolderRef.current) {
+      if (inbox) {
+        console.log('[Debug] Setting current folder to cached inbox:', inbox.id);
         setCurrentFolder(inbox.id);
         currentFolderRef.current = inbox.id;
+        
+        // Store the inbox folder ID in localStorage for analytics
+        localStorage.setItem('inboxFolderId', inbox.id);
+        console.log('[Debug] Stored inbox folder ID in localStorage:', inbox.id);
+        
+        // Check cache for inbox messages
+        const cachedMessages = mailCache.getMessages(account.email, inbox.id);
+        if (cachedMessages) {
+          console.log('[Debug] Using cached messages for inbox:', cachedMessages.messages.length);
+          setMessages(cachedMessages.messages);
+          setHasMoreMessages(!!cachedMessages.nextLink);
+          setCurrentPage(cachedMessages.page);
+          setIsLoading(false);
+          setIsLoadingMessages(false);
+        } else {
+          console.log('[Debug] No cached messages, fetching inbox');
+          setIsLoadingMessages(true);
+          emitMailEvent.getFolder({
+            appUserId,
+            email: account.email,
+            folderId: inbox.id,
+            page: 1
+          });
+        }
       }
       return;
     }
 
-    // If no cache, fetch folders once using getFolder
-    emitMailEvent.getFolder({
-      appUserId,
-      email: account.email,
-      folderId: 'root', // Use root folder to get all folders
-      page: 1
-    });
+    // If no cache, initialize mail sync which will fetch folders
+    console.log('[Debug] No cached folders, initializing mail sync for:', account.email);
+    // The mail:init event will be handled in the useEffect that sets up socket handlers
   }, []);
 
   // Effect for socket initialization
@@ -171,6 +199,19 @@ export default function DashboardPage() {
     }
 
     console.log('[Debug] Setting up socket handlers for:', activeAccount.email);
+
+    // Reset state when switching accounts
+    setCurrentFolder(null);
+    currentFolderRef.current = null;
+    setMessages([]);
+    setIsLoadingMessages(false);
+    setIsLoading(true);
+
+    // Clear cache for old account if we have a previous account
+    if (folders.length > 0) {
+      console.log('[Debug] Clearing cache for previous account');
+      // The cache will be automatically updated when new folders are fetched
+    }
 
     // Initialize folders only once when account changes
     initializeFolders(activeAccount);
@@ -259,15 +300,34 @@ export default function DashboardPage() {
 
     const handleFolders = (folders: MailFolder[]) => {
       console.log('[Debug] Received mail:folders event:', folders.length);
+      console.log('[Debug] Available folders:', folders.map(f => ({ id: f.id, name: f.displayName })));
+      
       mailCache.setFolders(activeAccount.email, folders);
       setFolders(folders);
       setIsLoading(false);
 
-      const inbox = folders.find(f => f.displayName.toLowerCase() === 'inbox');
+      // Try multiple ways to find the inbox folder
+      let inbox = folders.find(f => f.displayName.toLowerCase() === 'inbox');
+      if (!inbox) {
+        inbox = folders.find(f => f.displayName.toLowerCase().includes('inbox'));
+      }
+      if (!inbox) {
+        inbox = folders.find(f => f.id.toLowerCase().includes('inbox'));
+      }
+      // If still no inbox found, use the first folder
+      if (!inbox && folders.length > 0) {
+        inbox = folders[0];
+        console.log('[Debug] No inbox found, using first folder:', inbox.displayName);
+      }
+
       if (inbox) {
-        console.log('[Debug] Setting current folder to inbox:', inbox.id);
+        console.log('[Debug] Setting current folder to inbox:', inbox.id, inbox.displayName);
         setCurrentFolder(inbox.id);
         currentFolderRef.current = inbox.id;
+        
+        // Store the inbox folder ID in localStorage for analytics
+        localStorage.setItem('inboxFolderId', inbox.id);
+        console.log('[Debug] Stored inbox folder ID in localStorage:', inbox.id);
         
         // Check cache first for inbox messages
         const cachedMessages = mailCache.getMessages(activeAccount.email, inbox.id);
@@ -288,6 +348,8 @@ export default function DashboardPage() {
             page: 1
           });
         }
+      } else {
+        console.error('[Debug] No folders found and no inbox available');
       }
     };
 
@@ -629,7 +691,7 @@ export default function DashboardPage() {
   }
 
   const handleDelete = async (email: MailMessage, event: React.MouseEvent) => {
-    // Prevent the click from bubbling up to the email row
+    event.preventDefault();
     event.stopPropagation();
     
     if (!confirm('Are you sure you want to delete this email?')) {
@@ -637,21 +699,30 @@ export default function DashboardPage() {
     }
 
     const appUserId = localStorage.getItem('appUserId');
-    if (!appUserId || !activeAccount) return;
     
+    if (!appUserId || !activeAccount) {
+      toast.error('Missing user information');
+      return;
+    }
+
     try {
       emitMailEvent.deleteMessage({
         appUserId,
         email: activeAccount.email,
         messageId: email.id
       });
-
-      // Optimistically update UI
-      setMessages(prev => prev.filter(msg => msg.id !== email.id));
     } catch (error) {
       console.error('Failed to delete email:', error);
       toast.error('Failed to delete email');
     }
+  };
+
+  const handleReply = (email: MailMessage, replyType: 'reply' | 'replyAll', event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    // Navigate to reply page with just the message ID
+    router.push(`/reply?id=${email.id}&type=${replyType}`);
   };
 
   // Listen for delete confirmation
@@ -690,9 +761,15 @@ export default function DashboardPage() {
     };
   }, [socket, isConnected]);
 
-  const handleSaveCategories = async (categories: Category[]) => {
+  const handleSaveCategories = async (categories: EmailCategory[]) => {
     try {
-      await updateCategories(categories)
+      // Convert EmailCategory[] to Category[] by transforming createdAt
+      const convertedCategories: Category[] = categories.map(cat => ({
+        ...cat,
+        createdAt: cat.createdAt ? new Date(cat.createdAt) : undefined
+      }));
+      
+      await updateCategories(convertedCategories)
       toast.success('Categories updated successfully')
       setIsCategoryModalOpen(false)
       // Show setup wizard only after categories are saved
@@ -989,10 +1066,18 @@ export default function DashboardPage() {
                               )} />
                               {message.important ? 'Remove Important' : 'Mark as Important'}
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => handleReply(message, 'reply', e)}>
+                              <Reply className="h-4 w-4 mr-2" />
+                              Reply
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => handleReply(message, 'replyAll', e)}>
+                              <ReplyAll className="h-4 w-4 mr-2" />
+                              Reply All
+                            </DropdownMenuItem>
                             <DropdownMenuItem 
-                                  onClick={(e) => handleDelete(message, e)}
+                              onClick={(e) => handleDelete(message, e)}
                               className="text-red-500 focus:text-red-500"
-                                >
+                            >
                               <Trash2 className="h-4 w-4 mr-2" />
                               Delete
                             </DropdownMenuItem>

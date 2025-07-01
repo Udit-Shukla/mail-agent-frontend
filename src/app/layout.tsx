@@ -5,6 +5,7 @@ import { Toaster } from "sonner";
 import { SocketProvider } from '@/contexts/SocketContext';
 import { ThemeProvider } from "@/components/theme-provider";
 import { CategoryProvider } from '@/contexts/CategoryContext';
+import { AnalyticsProvider } from '@/contexts/AnalyticsContext';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,8 +41,10 @@ export default function RootLayout({
         >
           <SocketProvider>
             <CategoryProvider>
-              {children}
-              <Toaster />
+              <AnalyticsProvider>
+                {children}
+                <Toaster />
+              </AnalyticsProvider>
             </CategoryProvider>
           </SocketProvider>
         </ThemeProvider>

@@ -30,6 +30,8 @@ interface EmailMeta {
 interface EnrichedEmail {
   id: string;
   from: string;
+  to?: string;
+  cc?: string;
   subject: string;
   content: string;
   preview: string;
@@ -111,8 +113,40 @@ export function EnrichedEmailList() {
   const [selectedSentiment, setSelectedSentiment] = React.useState<string | null>(null);
   const [showFilters, setShowFilters] = React.useState(false);
   const [categories, setCategories] = React.useState<Category[]>([]);
+  const [currentActiveEmail, setCurrentActiveEmail] = React.useState<string | null>(null);
 
-  // Fetch categories on component mount
+  // Watch for changes in activeEmail from localStorage
+  React.useEffect(() => {
+    const checkActiveEmail = () => {
+      const activeEmail = localStorage.getItem('activeEmail');
+      if (activeEmail !== currentActiveEmail) {
+        console.log('🔄 Account switched from', currentActiveEmail, 'to', activeEmail);
+        setCurrentActiveEmail(activeEmail);
+        
+        // Reset component state when account changes
+        setSelectedEmail(null);
+        setEmails([]);
+        setCurrentPage(1);
+        setHasMore(true);
+        setIsLoading(true);
+        setIsLoadingMore(false);
+        setSelectedCategory(null);
+        setSelectedPriority(null);
+        setSelectedSentiment(null);
+        setShowFilters(false);
+      }
+    };
+
+    // Check immediately
+    checkActiveEmail();
+
+    // Set up interval to check for changes
+    const interval = setInterval(checkActiveEmail, 1000);
+
+    return () => clearInterval(interval);
+  }, [currentActiveEmail]);
+
+  // Fetch categories on component mount and when active email changes
   React.useEffect(() => {
     const fetchCategories = async () => {
       try {
@@ -123,8 +157,11 @@ export function EnrichedEmailList() {
         toast.error('Failed to load categories');
       }
     };
-    fetchCategories();
-  }, []);
+    
+    if (currentActiveEmail) {
+      fetchCategories();
+    }
+  }, [currentActiveEmail]);
 
   // Handle URL parameters for filters
   React.useEffect(() => {
@@ -157,12 +194,11 @@ export function EnrichedEmailList() {
   }, [selectedCategory, emails, isLoading, isLoadingMore, hasMore]);
 
   const loadMoreEmails = async () => {
-    if (!socket || !isConnected || isLoadingMore || !hasMore) return;
+    if (!socket || !isConnected || isLoadingMore || !hasMore || !currentActiveEmail) return;
 
     const appUserId = localStorage.getItem('appUserId');
-    const activeEmail = localStorage.getItem('activeEmail');
     
-    if (!appUserId || !activeEmail) return;
+    if (!appUserId) return;
 
     setIsLoadingMore(true);
     const nextPage = currentPage + 1;
@@ -170,7 +206,7 @@ export function EnrichedEmailList() {
     try {
       emitMailEvent.getFolder({
         appUserId,
-        email: activeEmail,
+        email: currentActiveEmail,
         folderId: 'Inbox',
         page: nextPage
       });
@@ -268,12 +304,11 @@ export function EnrichedEmailList() {
 
   // Request enrichment for loaded emails
   React.useEffect(() => {
-    if (!socket || !emails.length) return;
+    if (!socket || !emails.length || !currentActiveEmail) return;
 
     const appUserId = localStorage.getItem('appUserId');
-    const activeEmail = localStorage.getItem('activeEmail');
     
-    if (!appUserId || !activeEmail) return;
+    if (!appUserId) return;
 
     // Get IDs of unenriched emails
     const unenrichedIds = emails
@@ -284,20 +319,19 @@ export function EnrichedEmailList() {
       console.log('🔄 Requesting enrichment for', unenrichedIds.length, 'emails');
       emitMailEvent.enrichEmails({
         appUserId,
-        email: activeEmail,
+        email: currentActiveEmail,
         messageIds: unenrichedIds
       });
     }
-  }, [socket, emails]);
+  }, [socket, emails, currentActiveEmail]);
 
   // Handle initial email loading
   React.useEffect(() => {
-    if (!socket || !isConnected) return;
+    if (!socket || !isConnected || !currentActiveEmail) return;
 
     const appUserId = localStorage.getItem('appUserId');
-    const activeEmail = localStorage.getItem('activeEmail');
     
-    if (!appUserId || !activeEmail) return;
+    if (!appUserId) return;
 
     // Listen for incoming email messages
     const handleFolderMessages = (data: {
@@ -332,7 +366,7 @@ export function EnrichedEmailList() {
     // Fetch inbox messages
     emitMailEvent.getFolder({
       appUserId,
-      email: activeEmail,
+      email: currentActiveEmail,
       folderId: 'Inbox',
       page: 1
     });
@@ -340,7 +374,7 @@ export function EnrichedEmailList() {
     return () => {
       socket.off('mail:folderMessages', handleFolderMessages);
     };
-  }, [socket, isConnected]);
+  }, [socket, isConnected, currentActiveEmail]);
 
   // Add this useEffect to listen for mail:message and update selected email
   React.useEffect(() => {
@@ -355,15 +389,37 @@ export function EnrichedEmailList() {
     };
   }, [socket]);
 
+  // Listen for emails marked as read
+  React.useEffect(() => {
+    if (!socket) return;
+    const handleEmailMarkedRead = (data: { messageId: string }) => {
+      setEmails(prevEmails => 
+        prevEmails.map(email => 
+          email.id === data.messageId 
+            ? { ...email, read: true }
+            : email
+        )
+      );
+      setSelectedEmail(prev => 
+        prev && prev.id === data.messageId 
+          ? { ...prev, read: true }
+          : prev
+      );
+    };
+    socket.on('mail:markedRead', handleEmailMarkedRead);
+    return () => {
+      socket.off('mail:markedRead', handleEmailMarkedRead);
+    };
+  }, [socket]);
+
   const handleEmailClick = (email: EnrichedEmail) => {
     // If content is missing or too short, fetch full message
     if (!email.content || email.content.length < 30) {
       const appUserId = localStorage.getItem('appUserId');
-      const activeEmail = localStorage.getItem('activeEmail');
-      if (appUserId && activeEmail) {
+      if (appUserId && currentActiveEmail) {
         emitMailEvent.getMessage({
           appUserId,
-          email: activeEmail,
+          email: currentActiveEmail,
           messageId: email.id
         });
       }
@@ -372,13 +428,12 @@ export function EnrichedEmailList() {
     
     if (!email.read) {
       const appUserId = localStorage.getItem('appUserId');
-      const activeEmail = localStorage.getItem('activeEmail');
       
-      if (!appUserId || !activeEmail) return;
+      if (!appUserId || !currentActiveEmail) return;
 
       emitMailEvent.markRead({
         appUserId,
-        email: activeEmail,
+        email: currentActiveEmail,
         messageId: email.id
       });
     }
@@ -390,9 +445,8 @@ export function EnrichedEmailList() {
 
   const handleCategoryUpdate = (emailId: string, newCategory: string) => {
     const appUserId = localStorage.getItem('appUserId');
-    const activeEmail = localStorage.getItem('activeEmail');
     
-    if (!appUserId || !activeEmail) {
+    if (!appUserId || !currentActiveEmail) {
       toast.error('Missing user information');
       return;
     }
@@ -414,7 +468,7 @@ export function EnrichedEmailList() {
     // Send update to backend
     emitMailEvent.updateEmailCategory({
       appUserId,
-      email: activeEmail,
+      email: currentActiveEmail,
       messageId: emailId,
       category: newCategory
     });
@@ -664,11 +718,10 @@ export function EnrichedEmailList() {
             email={selectedEmail} 
             onToggleImportant={() => {
               const appUserId = localStorage.getItem('appUserId');
-              const activeEmail = localStorage.getItem('activeEmail');
-              if (appUserId && activeEmail) {
+              if (appUserId && currentActiveEmail) {
                 emitMailEvent.markImportant({
                   appUserId,
-                  email: activeEmail,
+                  email: currentActiveEmail,
                   messageId: selectedEmail.id,
                   flag: !selectedEmail.important
                 });

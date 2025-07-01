@@ -8,7 +8,9 @@ import {
   Trash2,
   ArrowLeft,
   File,
-  Download
+  Download,
+  Reply,
+  ReplyAll
 } from 'lucide-react';
 import { cn, parseEmailAddresses } from '@/lib/utils';
 import { emitMailEvent } from '@/lib/socket';
@@ -51,6 +53,9 @@ interface Props {
     id: string;
     subject: string;
     from: string;
+    to?: string;
+    cc?: string;
+    bcc?: string;
     timestamp: string;
     important: boolean;
     content?: string;
@@ -74,14 +79,12 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
   const { categories } = useCategory();
   const [isEnriching, setIsEnriching] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [showOriginal, setShowOriginal] = useState(false);
   const [emailContent, setEmailContent] = useState<string | undefined>(email.content);
   const [emailAttachments, setEmailAttachments] = useState(email.attachments);
-  const isLongContent = emailContent && emailContent.length > 400;
 
-  // Fetch email content when component mounts or when showOriginal changes
+  // Fetch email content when component mounts
   useEffect(() => {
-    if (showOriginal && !emailContent) {
+    if (!emailContent) {
       const appUserId = localStorage.getItem('appUserId');
       const activeEmail = localStorage.getItem('activeEmail');
       
@@ -108,7 +111,7 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
         });
       }
     }
-  }, [showOriginal, email.id, emailContent, socket, isConnected]);
+  }, [email.id, emailContent, socket, isConnected]);
 
   // Listen for email content updates
   useEffect(() => {
@@ -214,11 +217,6 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
     };
   }, [socket, isConnected, email.id]);
 
-  useEffect(() => {
-    // Collapse by default if content is long
-    setShowOriginal(!isLongContent);
-  }, [email.id]);
-
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'urgent': return 'bg-destructive text-destructive-foreground';
@@ -308,6 +306,29 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
     };
   }, [socket, isConnected, email.id, router]);
 
+  const handleReply = (replyType: 'reply' | 'replyAll') => {
+    // Store the current email data in localStorage for the reply page
+    const emailData = {
+      id: email.id,
+      subject: email.subject,
+      from: email.from,
+      to: email.to,
+      cc: email.cc,
+      content: emailContent,
+      timestamp: email.timestamp
+    };
+    
+    // Store in localStorage temporarily
+    const currentEmails = JSON.parse(localStorage.getItem('emailList') || '[]');
+    const updatedEmails = currentEmails.map((e: { id: string; subject?: string; from?: string; to?: string; cc?: string; content?: string; timestamp?: string }) => 
+      e.id === email.id ? { ...e, ...emailData } : e
+    );
+    localStorage.setItem('emailList', JSON.stringify(updatedEmails));
+    
+    // Navigate to reply page
+    router.push(`/reply?id=${email.id}&type=${replyType}`);
+  };
+
   return (
     <div className="h-full w-full flex flex-col bg-background">
       {/* Header */}
@@ -323,6 +344,39 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
             <h2 className="text-xl font-semibold pr-4">{email.subject}</h2>
           </div>
           <div className="flex items-center space-x-2">
+            {/* Reply buttons */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => handleReply('reply')}
+                    className="p-2 hover:bg-accent rounded-full"
+                  >
+                    <Reply className="h-5 w-5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Reply</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => handleReply('replyAll')}
+                    className="p-2 hover:bg-accent rounded-full"
+                  >
+                    <ReplyAll className="h-5 w-5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Reply All</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
             <button
               onClick={() => onToggleImportant(email.id)}
               className={cn(
@@ -364,45 +418,93 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
             </Tooltip>
           </TooltipProvider>
           <span className="mx-2">•</span>
+          {email.aiMeta && (
+            <div className="flex items-center gap-2 mr-2">
+              <span className={`text-xs ${getPriorityColor(email.aiMeta.priority)} px-2 py-0.5 rounded-full`}>
+                {email.aiMeta.priority}
+              </span>
+              <span className={`text-xs ${getCategoryStyle()}`}>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <span className="cursor-pointer hover:opacity-80">
+                      {(() => {
+                        const category = categories.find(c => c.name === email.aiMeta?.category);
+                        return category ? category.label : email.aiMeta?.category;
+                      })()}
+                    </span>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    {categories.map(category => (
+                      <DropdownMenuItem
+                        key={category.name}
+                        onClick={() => handleCategoryUpdate(category.name)}
+                        className="flex items-center gap-2"
+                      >
+                        <div 
+                          className="w-3 h-3 rounded-full" 
+                          style={{ backgroundColor: category.color }}
+                        />
+                        {category.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </span>
+              <span className={`text-xs ${getSentimentColor(email.aiMeta.sentiment)}`}>
+                {email.aiMeta.sentiment}
+              </span>
+            </div>
+          )}
           <time>{format(new Date(email.timestamp), 'MMM d, yyyy h:mm a')}</time>
         </div>
-        {email.aiMeta && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            <span className={`text-xs ${getPriorityColor(email.aiMeta.priority)} px-2 py-0.5 rounded-full`}>
-              {email.aiMeta.priority}
-            </span>
-            <span className={`text-xs ${getCategoryStyle()}`}>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <span className="cursor-pointer hover:opacity-80">
-                    {(() => {
-                      const category = categories.find(c => c.name === email.aiMeta?.category);
-                      return category ? category.label : email.aiMeta?.category;
-                    })()}
+
+        {/* Email Recipients Information */}
+        <div className="mt-3 space-y-2 text-sm">
+          {/* To field */}
+          {email.to && (
+            <div className="flex items-start">
+              <span className="font-medium text-muted-foreground w-12 flex-shrink-0">To:</span>
+              <span className="text-foreground flex-1">
+                {parseEmailAddresses(email.to).map((parsedEmail, index) => (
+                  <span key={index}>
+                    {parsedEmail.name ? `${parsedEmail.name} <${parsedEmail.email}>` : parsedEmail.email}
+                    {index < parseEmailAddresses(email.to!).length - 1 ? ', ' : ''}
                   </span>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  {categories.map(category => (
-                    <DropdownMenuItem
-                      key={category.name}
-                      onClick={() => handleCategoryUpdate(category.name)}
-                      className="flex items-center gap-2"
-                    >
-                      <div 
-                        className="w-3 h-3 rounded-full" 
-                        style={{ backgroundColor: category.color }}
-                      />
-                      {category.label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </span>
-            <span className={`text-xs ${getSentimentColor(email.aiMeta.sentiment)}`}>
-              {email.aiMeta.sentiment}
-            </span>
-          </div>
-        )}
+                ))}
+              </span>
+            </div>
+          )}
+
+          {/* CC field */}
+          {email.cc && (
+            <div className="flex items-start">
+              <span className="font-medium text-muted-foreground w-12 flex-shrink-0">Cc:</span>
+              <span className="text-foreground flex-1">
+                {parseEmailAddresses(email.cc).map((parsedEmail, index) => (
+                  <span key={index}>
+                    {parsedEmail.name ? `${parsedEmail.name} <${parsedEmail.email}>` : parsedEmail.email}
+                    {index < parseEmailAddresses(email.cc!).length - 1 ? ', ' : ''}
+                  </span>
+                ))}
+              </span>
+            </div>
+          )}
+
+          {/* BCC field */}
+          {email.bcc && (
+            <div className="flex items-start">
+              <span className="font-medium text-muted-foreground w-12 flex-shrink-0">Bcc:</span>
+              <span className="text-foreground flex-1">
+                {parseEmailAddresses(email.bcc).map((parsedEmail, index) => (
+                  <span key={index}>
+                    {parsedEmail.name ? `${parsedEmail.name} <${parsedEmail.email}>` : parsedEmail.email}
+                    {index < parseEmailAddresses(email.bcc!).length - 1 ? ', ' : ''}
+                  </span>
+                ))}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* AI Insights Panel */}
@@ -469,83 +571,75 @@ export const EmailDetail: React.FC<Props> = ({ email, onToggleImportant }) => {
       <div className="flex-1 p-4 overflow-auto">
         <div className="border-t pt-2">
           <div className="mt-1">
-            <button
-              className="text-sm text-primary underline mb-2"
-              onClick={() => {
-                console.log('👆 Toggle original email:', !showOriginal);
-                setShowOriginal(v => !v);
-              }}
-            >
-              {showOriginal ? 'Hide Original Email' : 'Show Original Email'}
-            </button>
-            {showOriginal && (
-              <div className="prose prose-sm max-w-none rounded p-4 border mt-2 overflow-x-auto bg-gray-200 dark:bg-gray-700">
-                {/* Render as HTML if available, fallback to plain text */}
-                {emailContent ? (
-                  <div dangerouslySetInnerHTML={{ __html: emailContent }} />
-                ) : (
-                  <div className="italic text-muted-foreground">
-                    {socket && isConnected ? 'Loading email content...' : 'Connecting to server...'}
-                  </div>
-                )}
+            <div className="max-w-none rounded p-4 border mt-2 overflow-x-auto bg-white border-gray-300 text-gray-900">
+              {/* Render as HTML if available, fallback to plain text */}
+              {emailContent ? (
+                <div 
+                  className="text-gray-900 prose prose-sm max-w-none prose-headings:text-gray-900 prose-p:text-gray-900 prose-strong:text-gray-900 prose-em:text-gray-900 prose-a:text-blue-600 prose-blockquote:text-gray-700 prose-code:text-gray-900 prose-pre:text-gray-900 prose-li:text-gray-900"
+                  dangerouslySetInnerHTML={{ __html: emailContent }} 
+                />
+              ) : (
+                <div className="italic text-gray-500">
+                  {socket && isConnected ? 'Loading email content...' : 'Connecting to server...'}
+                </div>
+              )}
 
-                {/* Attachments Section */}
-                {emailAttachments && Array.isArray(emailAttachments) && emailAttachments.length > 0 && (
-                  <div className="mt-6 bg-gray-100 rounded p-4 border border-border dark:bg-gray-700">
-                    <h3 className="text-lg font-medium mb-2 text-foreground">Attachments ({emailAttachments.length})</h3>
-                    <div className="grid gap-2">
-                      {emailAttachments.map((attachment) => (
-                        <div
-                          key={attachment.id}
-                          className="flex items-center justify-between p-3 border border-border rounded-lg bg-white dark:bg-gray-700"
-                        >
-                          <div className="flex items-center gap-3">
-                            <File className="h-5 w-5 text-gray-600" />
-                            <div className="flex flex-col">
-                              <span className="text-sm font-medium text-foreground">{attachment.name}</span>
-                              <span className="text-xs text-muted-foreground">
-                                {(attachment.size / 1024).toFixed(1)} KB
-                              </span>
-                            </div>
+              {/* Attachments Section */}
+              {emailAttachments && Array.isArray(emailAttachments) && emailAttachments.length > 0 && (
+                <div className="mt-6 bg-gray-50 rounded p-4 border border-gray-300">
+                  <h3 className="text-lg font-medium mb-2 text-gray-900">Attachments ({emailAttachments.length})</h3>
+                  <div className="grid gap-2">
+                    {emailAttachments.map((attachment) => (
+                      <div
+                        key={attachment.id}
+                        className="flex items-center justify-between p-3 border border-gray-300 rounded-lg bg-white"
+                      >
+                        <div className="flex items-center gap-3">
+                          <File className="h-5 w-5 text-gray-600" />
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium text-gray-900">{attachment.name}</span>
+                            <span className="text-xs text-gray-500">
+                              {(attachment.size / 1024).toFixed(1)} KB
+                            </span>
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              try {
-                                // Convert base64 to blob and download
-                                const byteCharacters = atob(attachment.contentBytes);
-                                const byteNumbers = new Array(byteCharacters.length);
-                                for (let i = 0; i < byteCharacters.length; i++) {
-                                  byteNumbers[i] = byteCharacters.charCodeAt(i);
-                                }
-                                const byteArray = new Uint8Array(byteNumbers);
-                                const blob = new Blob([byteArray], { type: attachment.contentType });
-                                const url = window.URL.createObjectURL(blob);
-                                const a = document.createElement('a');
-                                a.href = url;
-                                a.download = attachment.name;
-                                document.body.appendChild(a);
-                                a.click();
-                                window.URL.revokeObjectURL(url);
-                                document.body.removeChild(a);
-                              } catch (error) {
-                                console.error('Error downloading attachment:', error);
-                                toast.error('Failed to download attachment');
-                              }
-                            }}
-                            className="flex items-center gap-2 text-gray-700 hover:text-gray-900"
-                          >
-                            <Download className="h-4 w-4 text-foreground" />
-                            <span className="text-foreground">Download</span>
-                          </Button>
                         </div>
-                      ))}
-                    </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            try {
+                              // Convert base64 to blob and download
+                              const byteCharacters = atob(attachment.contentBytes);
+                              const byteNumbers = new Array(byteCharacters.length);
+                              for (let i = 0; i < byteCharacters.length; i++) {
+                                byteNumbers[i] = byteCharacters.charCodeAt(i);
+                              }
+                              const byteArray = new Uint8Array(byteNumbers);
+                              const blob = new Blob([byteArray], { type: attachment.contentType });
+                              const url = window.URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = attachment.name;
+                              document.body.appendChild(a);
+                              a.click();
+                              window.URL.revokeObjectURL(url);
+                              document.body.removeChild(a);
+                            } catch (error) {
+                              console.error('Error downloading attachment:', error);
+                              toast.error('Failed to download attachment');
+                            }
+                          }}
+                          className="flex items-center gap-2 text-gray-700 hover:text-gray-900"
+                        >
+                          <Download className="h-4 w-4 text-gray-700" />
+                          <span className="text-gray-700">Download</span>
+                        </Button>
+                      </div>
+                    ))}
                   </div>
-                )}
-              </div>
-            )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

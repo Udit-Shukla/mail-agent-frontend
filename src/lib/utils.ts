@@ -19,47 +19,22 @@ export interface ParsedEmail {
  * - Multiple emails separated by commas
  */
 export function parseEmailAddresses(emailString: string): ParsedEmail[] {
-  if (!emailString || typeof emailString !== 'string') {
-    return [];
-  }
-
-  // Split by comma and trim whitespace
-  const emailParts = emailString.split(',').map(part => part.trim()).filter(Boolean);
+  const emailRegex = /([^<,]+<[^>]+>|[^,\s]+@[^,\s]+)/g;
+  const matches = emailString.match(emailRegex) || [];
   
-  return emailParts.map(part => {
-    // Pattern to match "Name" <email@domain.com> or Name <email@domain.com>
-    const quotedPattern = /^"?([^"<]+)"?\s*<([^>]+)>$/;
-    // Pattern to match just email@domain.com
-    const emailOnlyPattern = /^([^<>\s]+@[^<>\s]+)$/;
-    
-    let match = part.match(quotedPattern);
-    if (match) {
+  return matches.map(match => {
+    const nameMatch = match.match(/^([^<]+)<([^>]+)>$/);
+    if (nameMatch) {
       return {
-        name: match[1].trim(),
-        email: match[2].trim()
+        name: nameMatch[1].trim(),
+        email: nameMatch[2].trim()
       };
-    }
-    
-    match = part.match(emailOnlyPattern);
-    if (match) {
+    } else {
       return {
         name: '',
-        email: match[1].trim()
+        email: match.trim()
       };
     }
-    
-    // Fallback: treat as email if it contains @, otherwise as name
-    if (part.includes('@')) {
-      return {
-        name: '',
-        email: part.trim()
-      };
-    }
-    
-    return {
-      name: part.trim(),
-      email: ''
-    };
   });
 }
 
@@ -82,4 +57,44 @@ export function formatEmailDisplay(parsedEmail: ParsedEmail): string {
  */
 export function formatEmailList(emails: ParsedEmail[]): string {
   return emails.map(formatEmailDisplay).join(', ');
+}
+
+// Convert HTML to plain text
+export function htmlToPlainText(html: string): string {
+  if (!html) return '';
+  
+  // Create a temporary div to parse HTML
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = html;
+  
+  // Get text content and normalize whitespace
+  let text = tempDiv.textContent || tempDiv.innerText || '';
+  
+  // Clean up the text
+  text = text
+    .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+    .replace(/\n\s*\n/g, '\n\n') // Replace multiple newlines with double newlines
+    .trim();
+  
+  return text;
+}
+
+// Check if content is HTML
+export function isHtmlContent(content: string): boolean {
+  if (!content) return false;
+  
+  // Simple check for HTML tags
+  const htmlRegex = /<[^>]*>/;
+  return htmlRegex.test(content);
+}
+
+// Safely render HTML content with fallback to plain text
+export function renderEmailContent(content: string, preferPlainText: boolean = false): string {
+  if (!content) return '';
+  
+  if (preferPlainText || !isHtmlContent(content)) {
+    return htmlToPlainText(content);
+  }
+  
+  return content;
 }

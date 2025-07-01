@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, ChangeEvent, KeyboardEvent } from 'react';
+import { useState, ChangeEvent, KeyboardEvent, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,6 +9,8 @@ import { ArrowLeft, Paperclip, Send, X, Sparkles } from 'lucide-react';
 import { emitMailEvent } from '@/lib/socket';
 import { Textarea } from '@/components/ui/textarea';
 import { useRouter } from 'next/navigation';
+import { parseEmailAddresses } from '@/lib/utils';
+import { useSocket } from '@/contexts/SocketContext';
 import { AIGenerationModal } from '@/components/AIGenerationModal';
 
 interface Attachment {
@@ -35,13 +37,32 @@ interface FormData {
   attachments: Attachment[];
 }
 
+interface ReplyEmailProps {
+  originalEmail: {
+    id: string;
+    subject: string;
+    from: string;
+    to?: string;
+    cc?: string;
+    content?: string;
+    timestamp: string;
+    aiMeta?: {
+      priority: 'urgent' | 'high' | 'medium' | 'low';
+      category: string;
+      sentiment: 'positive' | 'negative' | 'neutral';
+    };
+  };
+  replyType: 'reply' | 'replyAll';
+}
+
 const isValidEmail = (email: string) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(email);
 };
 
-export const ComposeEmail = () => {
+export const ReplyEmail = ({ originalEmail, replyType }: ReplyEmailProps) => {
   const router = useRouter();
+  const { socket } = useSocket();
   const [formData, setFormData] = useState<FormData>({
     toEmails: [],
     ccEmails: [],
@@ -56,6 +77,97 @@ export const ComposeEmail = () => {
   const [isSending, setIsSending] = useState(false);
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
+
+  // Listen for reply success events
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleReplySuccess = (result: { messageId: string; success: boolean }) => {
+      if (result.messageId === originalEmail.id && result.success) {
+        toast.success(`${replyType === 'reply' ? 'Reply' : 'Reply All'} sent successfully`);
+        router.back();
+      }
+    };
+
+    const handleReplyAllSuccess = (result: { messageId: string; success: boolean }) => {
+      if (result.messageId === originalEmail.id && result.success) {
+        toast.success(`${replyType === 'reply' ? 'Reply' : 'Reply All'} sent successfully`);
+        router.back();
+      }
+    };
+
+    const handleError = (error: string) => {
+      toast.error(`Failed to send ${replyType === 'reply' ? 'reply' : 'reply all'}: ${error}`);
+      setIsSending(false);
+    };
+
+    socket.on('mail:replied', handleReplySuccess);
+    socket.on('mail:repliedAll', handleReplyAllSuccess);
+    socket.on('mail:error', handleError);
+
+    return () => {
+      socket.off('mail:replied', handleReplySuccess);
+      socket.off('mail:repliedAll', handleReplyAllSuccess);
+      socket.off('mail:error', handleError);
+    };
+  }, [socket, originalEmail.id, replyType, router]);
+
+  // Initialize form data based on reply type
+  useEffect(() => {
+    const currentUserEmail = localStorage.getItem('activeEmail');
+    if (!currentUserEmail) return;
+
+    const fromEmails = parseEmailAddresses(originalEmail.from);
+    const toEmails = originalEmail.to ? parseEmailAddresses(originalEmail.to) : [];
+    const ccEmails = originalEmail.cc ? parseEmailAddresses(originalEmail.cc) : [];
+
+    let newToEmails: EmailPill[] = [];
+    const newCcEmails: EmailPill[] = [];
+
+    if (replyType === 'reply') {
+      // Reply: Send to the original sender only
+      if (fromEmails.length > 0) {
+        newToEmails = [{ id: Math.random().toString(), email: fromEmails[0].email }];
+      }
+    } else if (replyType === 'replyAll') {
+      // Reply All: Send to original sender + all original recipients (except current user)
+      if (fromEmails.length > 0) {
+        newToEmails = [{ id: Math.random().toString(), email: fromEmails[0].email }];
+      }
+
+      // Add original 'to' recipients (excluding current user)
+      toEmails.forEach(email => {
+        if (email.email !== currentUserEmail) {
+          newToEmails.push({ id: Math.random().toString(), email: email.email });
+        }
+      });
+
+      // Add original 'cc' recipients (excluding current user)
+      ccEmails.forEach(email => {
+        if (email.email !== currentUserEmail) {
+          newCcEmails.push({ id: Math.random().toString(), email: email.email });
+        }
+      });
+    }
+
+    // Set subject with Re: prefix
+    const subject = originalEmail.subject.startsWith('Re:') 
+      ? originalEmail.subject 
+      : `Re: ${originalEmail.subject}`;
+
+    setFormData(prev => ({
+      ...prev,
+      toEmails: newToEmails,
+      ccEmails: newCcEmails,
+      subject,
+      body: '' // Start with empty body, original message is displayed separately
+    }));
+
+    // Show CC field if there are CC recipients
+    if (newCcEmails.length > 0) {
+      setShowCc(true);
+    }
+  }, [originalEmail, replyType]);
 
   const handleEmailInput = (
     value: string,
@@ -120,35 +232,46 @@ export const ComposeEmail = () => {
         throw new Error('User not authenticated');
       }
 
-      await emitMailEvent.sendEmail({
-        appUserId,
-        email: activeEmail,
-        to: formData.toEmails.map(e => e.email).join(','),
-        subject: formData.subject,
-        body: formData.body,
-        cc: formData.ccEmails.length > 0 ? formData.ccEmails.map(e => e.email).join(',') : undefined,
-        bcc: formData.bccEmails.length > 0 ? formData.bccEmails.map(e => e.email).join(',') : undefined
-      });
+      // Prepare recipients in the format expected by the API
+      const toRecipients = formData.toEmails.map(email => ({
+        emailAddress: { address: email.email }
+      }));
+      
+      const ccRecipients = formData.ccEmails.length > 0 ? formData.ccEmails.map(email => ({
+        emailAddress: { address: email.email }
+      })) : undefined;
+      
+      const bccRecipients = formData.bccEmails.length > 0 ? formData.bccEmails.map(email => ({
+        emailAddress: { address: email.email }
+      })) : undefined;
 
-      toast.success('Email sent successfully');
-      // Reset form
-      setFormData({
-        toEmails: [],
-        ccEmails: [],
-        bccEmails: [],
-        toInput: '',
-        ccInput: '',
-        bccInput: '',
-        subject: '',
-        body: '',
-        attachments: []
-      });
-      // Navigate back to the previous page
-      router.back();
+      // Use reply or reply all based on the reply type
+      if (replyType === 'reply') {
+        emitMailEvent.replyEmail({
+          appUserId,
+          email: activeEmail,
+          messageId: originalEmail.id,
+          comment: formData.body,
+          toRecipients,
+          ccRecipients,
+          bccRecipients
+        });
+      } else {
+        emitMailEvent.replyAllEmail({
+          appUserId,
+          email: activeEmail,
+          messageId: originalEmail.id,
+          comment: formData.body,
+          toRecipients,
+          ccRecipients,
+          bccRecipients
+        });
+      }
+
+      // Success and navigation will be handled by socket events
     } catch (error) {
-      toast.error('Failed to send email');
-      console.error('Error sending email:', error);
-    } finally {
+      toast.error(`Failed to send ${replyType === 'reply' ? 'reply' : 'reply all'}`);
+      console.error('Error sending reply:', error);
       setIsSending(false);
     }
   };
@@ -180,10 +303,9 @@ export const ComposeEmail = () => {
   const handleAIGenerated = (content: string, subject?: string) => {
     setFormData(prev => ({
       ...prev,
-      body: content,
-      ...(subject && { subject })
+      body: content
     }));
-    toast.success('AI-generated content applied to your email!');
+    toast.success('AI-generated content applied to your reply!');
   };
 
   const handleAIImproved = (content: string) => {
@@ -191,7 +313,7 @@ export const ComposeEmail = () => {
       ...prev,
       body: content
     }));
-    toast.success('AI-improved content applied to your email!');
+    toast.success('AI-improved content applied to your reply!');
   };
 
   const EmailPillList = ({ emails, onRemove }: { emails: EmailPill[], onRemove: (id: string) => void }) => (
@@ -224,9 +346,11 @@ export const ComposeEmail = () => {
           className="flex items-center gap-2"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back to Inbox
+          Back to Email
         </Button>
-        <h2 className="text-lg font-semibold">New Message</h2>
+        <h2 className="text-lg font-semibold">
+          {replyType === 'reply' ? 'Reply' : 'Reply All'}
+        </h2>
       </div>
 
       {/* Compose Form */}
@@ -359,13 +483,14 @@ export const ComposeEmail = () => {
               <Label htmlFor="body" className="text-sm font-medium">Message</Label>
               <div className="flex gap-2">
                 <AIGenerationModal
-                  type="compose"
-                  recipient={formData.toEmails.map(e => e.email).join(', ')}
+                  type="reply"
+                  originalEmail={originalEmail}
+                  replyType={replyType}
                   onGenerated={handleAIGenerated}
                   trigger={
                     <Button variant="outline" size="sm" className="gap-2">
                       <Sparkles className="w-4 h-4" />
-                      AI Compose
+                      AI Reply
                     </Button>
                   }
                 />
@@ -388,10 +513,36 @@ export const ComposeEmail = () => {
               id="body"
               value={formData.body}
               onChange={(e) => setFormData(prev => ({ ...prev, body: e.target.value }))}
-              placeholder="Write your message here..."
+              placeholder="Write your reply here..."
               className="min-h-[300px] w-full"
               required
             />
+            
+            {/* Original Message Display */}
+            {originalEmail.content && (
+              <div className="mt-4 border-t pt-4">
+                <div className="bg-muted/50 rounded-lg p-4 border">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold text-muted-foreground">Original Message</h4>
+                    <div className="text-xs text-muted-foreground">
+                      {new Date(originalEmail.timestamp).toLocaleString()}
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2 text-sm text-muted-foreground mb-3">
+                    <div><strong>From:</strong> {originalEmail.from}</div>
+                    {originalEmail.to && <div><strong>To:</strong> {originalEmail.to}</div>}
+                    {originalEmail.cc && <div><strong>Cc:</strong> {originalEmail.cc}</div>}
+                    <div><strong>Subject:</strong> {originalEmail.subject}</div>
+                  </div>
+                  
+                  <div 
+                    className="email-content text-sm border-t pt-3 mt-3"
+                    dangerouslySetInnerHTML={{ __html: originalEmail.content }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Attachments */}
@@ -452,7 +603,7 @@ export const ComposeEmail = () => {
               ) : (
                 <div className="flex items-center">
                   <Send className="w-4 h-4 mr-2" />
-                  Send
+                  Send Reply
                 </div>
               )}
             </Button>

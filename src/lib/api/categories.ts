@@ -16,7 +16,6 @@ export interface UserProfile {
     appUserId: string;
     createdAt: string;
     updatedAt: string;
-    categories: Category[];
   };
   accounts: {
     total: number;
@@ -58,18 +57,27 @@ export const getUserProfile = async (): Promise<UserProfile> => {
 export const getCategories = async (): Promise<Category[]> => {
   try {
     const appUserId = localStorage.getItem('appUserId');
+    const activeEmail = localStorage.getItem('activeEmail');
+    
     if (!appUserId) {
       throw new Error('appUserId not found');
     }
 
-    console.log('Making request to:', getApiUrl('user/categories'));
-    const response = await axios.get(getApiUrl('user/categories'), {
-      params: { appUserId },
+    if (!activeEmail) {
+      throw new Error('activeEmail not found');
+    }
+
+    console.log('Making request to:', getApiUrl('email-categories'));
+    const response = await axios.get(getApiUrl('email-categories'), {
+      params: { 
+        appUserId,
+        email: activeEmail
+      },
       withCredentials: true
     });
-    console.log('Categories API response:', response.data);
+    console.log('Email categories API response:', response.data);
     
-    return response.data.categories || [];
+    return response.data || [];
   } catch (error) {
     if (axios.isAxiosError(error)) {
       console.error('API Error:', {
@@ -85,15 +93,24 @@ export const getCategories = async (): Promise<Category[]> => {
 export const updateCategories = async (categories: Category[]): Promise<Category[]> => {
   try {
     const appUserId = localStorage.getItem('appUserId');
+    const activeEmail = localStorage.getItem('activeEmail');
+    
     if (!appUserId) {
       throw new Error('appUserId not found');
     }
 
-    console.log('Making request to:', getApiUrl('user/categories'));
-    const response = await axios.put(getApiUrl('user/categories'), 
-      { categories },
+    if (!activeEmail) {
+      throw new Error('activeEmail not found');
+    }
+
+    console.log('Making request to:', getApiUrl('email-categories'));
+    const response = await axios.put(getApiUrl('email-categories'), 
+      { 
+        categories,
+        appUserId,
+        email: activeEmail
+      },
       {
-        params: { appUserId },
         withCredentials: true
       }
     );

@@ -17,6 +17,7 @@ import {
 import { PiMicrosoftOutlookLogoDuotone } from 'react-icons/pi';
 import { SiGmail } from 'react-icons/si';
 import { getUserProfile, type UserProfile } from '@/lib/api/categories';
+import { getUserEmailAccounts, type EmailAccount } from '@/lib/api/emailCategories';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -37,17 +38,22 @@ import {
 export default function ProfilePage() {
   const router = useRouter();
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchProfile = async () => {
+    const fetchData = async () => {
       try {
         setLoading(true);
-        const data = await getUserProfile();
-        setProfile(data);
+        const [profileData, emailAccountsData] = await Promise.all([
+          getUserProfile(),
+          getUserEmailAccounts()
+        ]);
+        setProfile(profileData);
+        setEmailAccounts(emailAccountsData);
       } catch (err) {
-        console.error('Error fetching profile:', err);
+        console.error('Error fetching data:', err);
         setError('Failed to load profile data');
         toast.error('Failed to load profile data');
       } finally {
@@ -55,7 +61,7 @@ export default function ProfilePage() {
       }
     };
 
-    fetchProfile();
+    fetchData();
   }, []);
 
   const handleAddAccount = () => {
@@ -103,13 +109,17 @@ export default function ProfilePage() {
         clearInterval(window.addAccountPollTimer)
         delete window.addAccountPollTimer
         
-        // Refresh profile data to show new account
+        // Refresh both profile and email accounts data to show new account
         try {
-          const data = await getUserProfile();
-          setProfile(data);
+          const [profileData, emailAccountsData] = await Promise.all([
+            getUserProfile(),
+            getUserEmailAccounts()
+          ]);
+          setProfile(profileData);
+          setEmailAccounts(emailAccountsData);
           toast.success('Account added successfully!');
         } catch (error) {
-          console.error('Error refreshing profile:', error);
+          console.error('Error refreshing data:', error);
         }
       }
     }, 500)
@@ -161,9 +171,13 @@ export default function ProfilePage() {
         throw new Error('Failed to unlink account');
       }
 
-      // Refresh profile data
-      const data = await getUserProfile();
-      setProfile(data);
+      // Refresh both profile and email accounts data
+      const [profileData, emailAccountsData] = await Promise.all([
+        getUserProfile(),
+        getUserEmailAccounts()
+      ]);
+      setProfile(profileData);
+      setEmailAccounts(emailAccountsData);
       toast.success('Account unlinked successfully');
     } catch (error) {
       console.error('Error unlinking account:', error);
@@ -174,15 +188,18 @@ export default function ProfilePage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
-        <div className="space-y-1">
+        <div className="space-y-6">
           <div className="flex items-center gap-4">
             <Skeleton className="h-8 w-8" />
             <Skeleton className="h-8 w-32" />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Skeleton className="h-64" />
-            <Skeleton className="h-64" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Skeleton className="h-24" />
+            <Skeleton className="h-24" />
+            <Skeleton className="h-24" />
           </div>
+          <Skeleton className="h-64" />
+          <Skeleton className="h-64" />
           <Skeleton className="h-96" />
         </div>
       </div>
@@ -405,35 +422,79 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
 
-        {/* Categories */}
+        {/* Categories by Email Account */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Settings className="h-5 w-5" />
-              Email Categories ({profile.user.categories.length})
+              Email Categories by Account
+              <Badge variant="secondary" className="ml-2">
+                {emailAccounts.reduce((total, account) => total + account.categories.length, 0)} total categories
+              </Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
-              {profile.user.categories.map((category, index) => (
-                <div
-                  key={index}
-                  className="flex flex-col gap-2 p-3 border rounded-lg"
-                  style={{ borderLeftColor: category.color, borderLeftWidth: '4px' }}
-                >
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="w-3 h-3 rounded-full"
-                      style={{ backgroundColor: category.color }}
-                    />
-                    <span className="text-sm font-medium">{category.label}</span>
+            {emailAccounts.length === 0 ? (
+              <div className="text-center py-8">
+                <Settings className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-medium mb-2">No Email Accounts</h3>
+                <p className="text-muted-foreground mb-4">
+                  Connect your email accounts to see their categories.
+                </p>
+                <Button onClick={handleAddAccount}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Email Account
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {emailAccounts.map((account) => (
+                  <div key={account._id} className="border rounded-lg p-4">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className={`p-2 rounded-full ${getProviderColor(account.provider)}`}>
+                        {getProviderIcon(account.provider)}
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-lg">{account.email}</h4>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="secondary" className="text-xs">
+                            {account.provider}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {account.categories.length} categories
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {account.categories.length === 0 ? (
+                      <p className="text-muted-foreground text-sm">No categories configured for this account.</p>
+                    ) : (
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                        {account.categories.map((category, index) => (
+                          <div
+                            key={index}
+                            className="flex flex-col gap-2 p-3 border rounded-lg"
+                            style={{ borderLeftColor: category.color, borderLeftWidth: '4px' }}
+                          >
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="w-3 h-3 rounded-full"
+                                style={{ backgroundColor: category.color }}
+                              />
+                              <span className="text-sm font-medium">{category.label}</span>
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {category.description}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    {category.description}
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

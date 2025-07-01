@@ -8,18 +8,18 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Plus, X, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
-import { type Category } from "@/lib/api/categories"
+import { type EmailCategory } from "@/lib/api/emailCategories"
 import { useCategory } from '@/contexts/CategoryContext';
 
 interface CategoryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (categories: Category[]) => void;
+  onSave: (categories: EmailCategory[]) => void;
 }
 
 export function CategoryModal({ isOpen, onClose, onSave }: CategoryModalProps) {
   const { categories: contextCategories, visibleCategories, toggleCategoryVisibility } = useCategory();
-  const [categories, setLocalCategories] = useState<Category[]>(contextCategories);
+  const [categories, setLocalCategories] = useState<EmailCategory[]>(contextCategories);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryLabel, setNewCategoryLabel] = useState("");
   const [newCategoryDescription, setNewCategoryDescription] = useState("");
@@ -35,15 +35,13 @@ export function CategoryModal({ isOpen, onClose, onSave }: CategoryModalProps) {
   // Ensure all categories are visible by default when modal opens
   useEffect(() => {
     if (isOpen && contextCategories.length > 0) {
-      const categoryIds = contextCategories
-        .map(cat => cat._id)
-        .filter((id): id is string => id !== undefined);
+      const categoryNames = contextCategories.map(cat => cat.name);
       
       // Make all categories visible if none are currently visible
       if (visibleCategories.length === 0) {
-        categoryIds.forEach(id => {
-          if (!visibleCategories.includes(id)) {
-            toggleCategoryVisibility(id);
+        categoryNames.forEach(name => {
+          if (!visibleCategories.includes(name)) {
+            toggleCategoryVisibility(name);
           }
         });
       }
@@ -65,12 +63,12 @@ export function CategoryModal({ isOpen, onClose, onSave }: CategoryModalProps) {
       return;
     }
 
-    const newCategory: Category = {
+    const newCategory: EmailCategory = {
       name: newCategoryName.trim(),
       label: newCategoryLabel.trim(),
       description: newCategoryDescription.trim() || 'No description provided',
       color: newCategoryColor,
-      createdAt: new Date(),
+      createdAt: new Date().toISOString(),
     };
 
     setLocalCategories([...categories, newCategory]);
@@ -187,11 +185,11 @@ export function CategoryModal({ isOpen, onClose, onSave }: CategoryModalProps) {
                     type="button"
                     variant="ghost"
                     size="icon"
-                    onClick={() => category._id && toggleCategoryVisibility(category._id)}
+                    onClick={() => toggleCategoryVisibility(category.name)}
                     className="h-8 w-8 hover:bg-accent flex-shrink-0"
-                    title={category._id && visibleCategories.includes(category._id) ? "Hide category" : "Show category"}
+                    title={visibleCategories.includes(category.name) ? "Hide category" : "Show category"}
                   >
-                    {category._id && visibleCategories.includes(category._id) ? (
+                    {visibleCategories.includes(category.name) ? (
                       <Eye className="h-4 w-4" />
                     ) : (
                       <EyeOff className="h-4 w-4" />
@@ -202,7 +200,7 @@ export function CategoryModal({ isOpen, onClose, onSave }: CategoryModalProps) {
                     variant="ghost"
                     size="icon"
                     onClick={() => handleRemoveCategory(index)}
-                    className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive flex-shrink-0"
+                    className="h-8 w-8 hover:bg-destructive/10 text-destructive flex-shrink-0"
                     title="Remove category"
                   >
                     <X className="h-4 w-4" />
@@ -212,11 +210,11 @@ export function CategoryModal({ isOpen, onClose, onSave }: CategoryModalProps) {
             </div>
           </div>
         </div>
-        <div className="flex justify-end gap-3 border-t pt-4">
-          <Button variant="outline" onClick={onClose} className="h-11 px-6">
+        <div className="flex justify-end gap-3 pt-4 border-t">
+          <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={handleSave} className="h-11 px-6">
+          <Button onClick={handleSave}>
             Save Changes
           </Button>
         </div>

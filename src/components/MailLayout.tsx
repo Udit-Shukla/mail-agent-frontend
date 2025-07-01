@@ -15,6 +15,7 @@ import { SetupWizard } from '@/components/SetupWizard';
 import { LoadingScreen } from '@/components/LoadingScreen';
 import { CategoryModal } from "@/components/CategoryModal";
 import { updateCategories, type Category } from "@/lib/api/categories";
+import { type EmailCategory } from "@/lib/api/emailCategories";
 import { Button } from '@/components/ui/button';
 import { Mail } from 'lucide-react';
 
@@ -57,8 +58,18 @@ export function MailLayout({ children }: MailLayoutProps) {
         
         setLinkedAccounts(accounts);
         if (accounts.length > 0) {
-          setActiveAccount(accounts[0]);
-          localStorage.setItem('activeEmail', accounts[0].email);
+          // Only set if not already set
+          const existing = localStorage.getItem('activeEmail');
+          const found = accounts.find((acc: Account) => acc.email === existing);
+          if (existing && found) {
+            setActiveAccount(found);
+          } else {
+            setActiveAccount(accounts[0]);
+            localStorage.setItem('activeEmail', accounts[0].email);
+          }
+          // Set the inbox folder ID for the active account
+          localStorage.setItem('inboxFolderId', 'Inbox');
+          console.log('🔄 MailLayout: Initial account setup - activeEmail:', localStorage.getItem('activeEmail'), 'inboxFolderId: Inbox');
           setShowSetupWizard(false);
         } else {
           setShowSetupWizard(true);
@@ -86,8 +97,22 @@ export function MailLayout({ children }: MailLayoutProps) {
     }
   }, []);
 
+  // Effect for setting active email in localStorage when activeAccount changes
+  React.useEffect(() => {
+    if (activeAccount) {
+      localStorage.setItem('activeEmail', activeAccount.email);
+      // Set the inbox folder ID - default to "Inbox" for all accounts
+      localStorage.setItem('inboxFolderId', 'Inbox');
+      console.log('🔄 MailLayout: Set activeEmail to', activeAccount.email, 'and inboxFolderId to Inbox');
+    }
+  }, [activeAccount]);
+
   const handleAccountSwitch = useCallback((account: Account) => {
     setActiveAccount(account);
+    localStorage.setItem('activeEmail', account.email);
+    // Set the inbox folder ID when switching accounts
+    localStorage.setItem('inboxFolderId', 'Inbox');
+    console.log('🔄 MailLayout: Switched to account', account.email, 'and set inboxFolderId to Inbox');
   }, []);
 
   const handleAddAccount = useCallback(() => {
@@ -151,9 +176,15 @@ export function MailLayout({ children }: MailLayoutProps) {
     }, 500)
   }, [router, fetchLinkedAccounts, linkedAccounts.length]);
 
-  const handleSaveCategories = async (categories: Category[]) => {
+  const handleSaveCategories = async (categories: EmailCategory[]) => {
     try {
-      await updateCategories(categories)
+      // Convert EmailCategory[] to Category[] by transforming createdAt
+      const convertedCategories: Category[] = categories.map(cat => ({
+        ...cat,
+        createdAt: cat.createdAt ? new Date(cat.createdAt) : undefined
+      }));
+      
+      await updateCategories(convertedCategories)
       toast.success('Categories updated successfully')
       setIsCategoryModalOpen(false)
       // Don't show setup wizard after categories are saved - user should see the main dashboard
@@ -456,7 +487,10 @@ export function MailLayout({ children }: MailLayoutProps) {
         {children}
       </div>
       
-      <ComposeFAB />
+      {/* Only show ComposeFAB on dashboard and mail pages, not on compose or reply pages */}
+      {!pathname.includes('/compose') && !pathname.includes('/reply') && (
+        <ComposeFAB />
+      )}
 
       <CategoryModal
         isOpen={isCategoryModalOpen}

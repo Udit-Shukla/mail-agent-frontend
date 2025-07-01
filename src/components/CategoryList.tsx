@@ -19,12 +19,12 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Eye, EyeOff, GripVertical } from 'lucide-react';
-import { Category } from '@/lib/api/categories';
+import { EmailCategory } from '@/lib/api/emailCategories';
 
 interface SortableCategoryProps {
-  category: Category;
+  category: EmailCategory;
   isVisible: boolean;
-  onToggleVisibility: (categoryId: string) => void;
+  onToggleVisibility: (categoryName: string) => void;
 }
 
 function SortableCategory({ category, isVisible, onToggleVisibility }: SortableCategoryProps) {
@@ -34,7 +34,7 @@ function SortableCategory({ category, isVisible, onToggleVisibility }: SortableC
     setNodeRef,
     transform,
     transition,
-  } = useSortable({ id: category._id || '' });
+  } = useSortable({ id: category.name });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -61,7 +61,7 @@ function SortableCategory({ category, isVisible, onToggleVisibility }: SortableC
         {category.label}
       </div>
       <button
-        onClick={() => category._id && onToggleVisibility(category._id)}
+        onClick={() => onToggleVisibility(category.name)}
         className="p-1 hover:bg-accent rounded"
       >
         {isVisible ? (
@@ -75,10 +75,10 @@ function SortableCategory({ category, isVisible, onToggleVisibility }: SortableC
 }
 
 interface CategoryListProps {
-  categories: Category[];
-  onCategoriesChange: (categories: Category[]) => void;
+  categories: EmailCategory[];
+  onCategoriesChange: (categories: EmailCategory[]) => void;
   visibleCategories: string[];
-  onVisibilityChange: (categoryId: string) => void;
+  onVisibilityChange: (categoryName: string) => void;
 }
 
 export function CategoryList({
@@ -98,8 +98,8 @@ export function CategoryList({
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
-      const oldIndex = categories.findIndex((cat) => cat._id === active.id);
-      const newIndex = categories.findIndex((cat) => cat._id === over.id);
+      const oldIndex = categories.findIndex((cat) => cat.name === active.id);
+      const newIndex = categories.findIndex((cat) => cat.name === over.id);
 
       if (oldIndex !== -1 && newIndex !== -1) {
         const newCategories = arrayMove(categories, oldIndex, newIndex);
@@ -108,9 +108,7 @@ export function CategoryList({
     }
   };
 
-  const categoryIds = categories
-    .map((cat) => cat._id)
-    .filter((id): id is string => id !== undefined);
+  const categoryNames = categories.map((cat) => cat.name);
 
   return (
     <DndContext
@@ -119,15 +117,15 @@ export function CategoryList({
       onDragEnd={handleDragEnd}
     >
       <SortableContext
-        items={categoryIds}
+        items={categoryNames}
         strategy={verticalListSortingStrategy}
       >
         <div className="space-y-2">
           {categories.map((category) => (
             <SortableCategory
-              key={category._id || category.name}
+              key={category.name}
               category={category}
-              isVisible={category._id ? visibleCategories.includes(category._id) : false}
+              isVisible={visibleCategories.includes(category.name)}
               onToggleVisibility={onVisibilityChange}
             />
           ))}

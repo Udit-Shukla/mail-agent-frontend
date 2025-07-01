@@ -87,6 +87,15 @@ export default function EmailPage() {
         console.log('[Debug] Attachments:', details.attachments);
         setEmail(details);
         setIsLoading(false);
+        
+        // Mark email as read if it's not already read
+        if (!details.read) {
+          emitMailEvent.markRead({
+            appUserId,
+            email: activeEmail,
+            messageId: messageId
+          });
+        }
       }
     };
 
@@ -102,10 +111,17 @@ export default function EmailPage() {
       }
     };
 
+    const handleEmailMarkedRead = ({ messageId }: { messageId: string }) => {
+      if (messageId === params.id) {
+        setEmail(prev => prev ? { ...prev, read: true } : null);
+      }
+    };
+
     // Add socket event handlers
     addEventHandler('mail:message', handleEmailContent);
     addEventHandler('mail:error', handleError);
     addEventHandler('mail:importantMarked', handleImportantMarked);
+    addEventHandler('mail:markedRead', handleEmailMarkedRead);
 
     // If socket is already connected, fetch the email
     if (isConnected) {
@@ -124,6 +140,7 @@ export default function EmailPage() {
       removeEventHandler('mail:message', handleEmailContent);
       removeEventHandler('mail:error', handleError);
       removeEventHandler('mail:importantMarked', handleImportantMarked);
+      removeEventHandler('mail:markedRead', handleEmailMarkedRead);
     };
   }, [params.id, router, socket, isConnected, addEventHandler, removeEventHandler]);
 
@@ -169,6 +186,13 @@ export default function EmailPage() {
       toast.error('Failed to delete email');
       setIsDeleting(false);
     }
+  };
+
+  const handleReply = (replyType: 'reply' | 'replyAll') => {
+    if (!email) return;
+    
+    // Navigate to reply page with just the message ID
+    router.push(`/reply?id=${email.id}&type=${replyType}`);
   };
 
   // Listen for delete confirmation
@@ -238,11 +262,11 @@ export default function EmailPage() {
             Back
           </Button>
           <div className="h-6 w-px bg-border mx-2" />
-          <Button variant="ghost" size="sm" className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" className="flex items-center gap-2" onClick={() => handleReply('reply')}>
             <Reply className="h-4 w-4" />
             Reply
           </Button>
-          <Button variant="ghost" size="sm" className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" className="flex items-center gap-2" onClick={() => handleReply('replyAll')}>
             <ReplyAll className="h-4 w-4" />
             Reply All
           </Button>

@@ -24,18 +24,30 @@ export interface EmailAnalyticsData {
   categories: AnalyticsItem[];
   sentiment: AnalyticsItem[];
   priority: AnalyticsItem[];
+  enrichedCount?: number;
 }
 
-export const getEmailStats = async (): Promise<EmailStats> => {
+export const getEmailStats = async (folderId?: string): Promise<EmailStats> => {
   try {
     const appUserId = localStorage.getItem('appUserId');
+    const activeEmail = localStorage.getItem('activeEmail');
     const token = localStorage.getItem('token');
-    if (!appUserId || !token) {
-      throw new Error('appUserId or token not found');
+    if (!appUserId || !token || !activeEmail) {
+      throw new Error('appUserId, token, or activeEmail not found');
     }
 
+    // Use provided folderId or fallback to 'Inbox'
+    const actualFolderId = folderId || 'Inbox';
+    console.log('📊 API: Using folderId for stats:', actualFolderId);
+
+    const params: { appUserId: string; email: string; folderId: string } = { 
+      appUserId, 
+      email: activeEmail, 
+      folderId: actualFolderId 
+    };
+
     const response = await axios.get(`${API_URL}/email-analytics/stats`, {
-      params: { appUserId },
+      params,
       headers: {
         Authorization: `Bearer ${token}`
       },
@@ -48,16 +60,27 @@ export const getEmailStats = async (): Promise<EmailStats> => {
   }
 };
 
-export const getEmailAnalytics = async (): Promise<EmailAnalyticsData> => {
+export const getEmailAnalytics = async (folderId?: string): Promise<EmailAnalyticsData> => {
   try {
     const appUserId = localStorage.getItem('appUserId');
+    const activeEmail = localStorage.getItem('activeEmail');
     const token = localStorage.getItem('token');
-    if (!appUserId || !token) {
-      throw new Error('appUserId or token not found');
+    if (!appUserId || !token || !activeEmail) {
+      throw new Error('appUserId, token, or activeEmail not found');
     }
 
+    // Use provided folderId or fallback to 'Inbox'
+    const actualFolderId = folderId || 'Inbox';
+    console.log('📊 API: Using folderId for analytics:', actualFolderId);
+
+    const params: { appUserId: string; email: string; folderId: string } = { 
+      appUserId, 
+      email: activeEmail, 
+      folderId: actualFolderId 
+    };
+
     const response = await axios.get(`${API_URL}/email-analytics/analytics`, {
-      params: { appUserId },
+      params,
       headers: {
         Authorization: `Bearer ${token}`
       },
@@ -66,6 +89,60 @@ export const getEmailAnalytics = async (): Promise<EmailAnalyticsData> => {
     return response.data;
   } catch (error) {
     console.error('Error in getEmailAnalytics:', error);
+    throw error;
+  }
+};
+
+export interface UnreadEmailSummary {
+  id: string;
+  subject: string;
+  from: string;
+  timestamp: string;
+  aiMeta: {
+    priority: string;
+    category: string;
+    summary: string;
+  };
+  important: boolean;
+  flagged: boolean;
+}
+
+export interface UnreadEmailsSummaryData {
+  emails: UnreadEmailSummary[];
+  total: number;
+  lastUpdated: string;
+}
+
+export const getUnreadEmailsSummary = async (folderId?: string, timePeriod: string = '24h'): Promise<UnreadEmailsSummaryData> => {
+  try {
+    const appUserId = localStorage.getItem('appUserId');
+    const activeEmail = localStorage.getItem('activeEmail');
+    const token = localStorage.getItem('token');
+    if (!appUserId || !token || !activeEmail) {
+      throw new Error('appUserId, token, or activeEmail not found');
+    }
+
+    // Use provided folderId or fallback to 'Inbox'
+    const actualFolderId = folderId || 'Inbox';
+    console.log('📊 API: Using folderId for unread summary:', actualFolderId, 'timePeriod:', timePeriod);
+
+    const params: { appUserId: string; email: string; folderId: string; timePeriod: string } = { 
+      appUserId, 
+      email: activeEmail, 
+      folderId: actualFolderId,
+      timePeriod
+    };
+
+    const response = await axios.get(`${API_URL}/email-analytics/unread-summary`, {
+      params,
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      withCredentials: true
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error in getUnreadEmailsSummary:', error);
     throw error;
   }
 }; 

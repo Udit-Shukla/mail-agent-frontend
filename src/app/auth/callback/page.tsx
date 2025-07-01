@@ -32,7 +32,7 @@ function AuthCallbackContent() {
           window.close()
         } else {
           toast.error(errorDetails || 'Failed to connect account')
-          router.push('/dashboard')
+          router.push('/emailList')
         }
         return
       }
@@ -43,7 +43,7 @@ function AuthCallbackContent() {
           window.close()
         } else {
           toast.error('Invalid callback parameters')
-          router.push('/dashboard')
+          router.push('/emailList')
         }
         return
       }
@@ -90,7 +90,7 @@ function AuthCallbackContent() {
           window.close()
         } else {
           toast.success(`Successfully connected ${email}`)
-          router.push('/dashboard')
+          router.push('/emailList')
         }
       } catch (err) {
         console.error('Auth callback error:', err)
@@ -100,7 +100,7 @@ function AuthCallbackContent() {
           window.close()
         } else {
           toast.error(error.message || 'Failed to complete authentication')
-          router.push('/dashboard')
+          router.push('/emailList')
         }
       }
     }
