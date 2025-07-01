@@ -6,7 +6,7 @@ import { emitMailEvent } from '@/lib/socket';
 import { useSocket } from '@/contexts/SocketContext';
 import { Sparkles, AlertCircle, Clock, ArrowLeft, Filter } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { getCategories, type Category } from "@/lib/api/categories"
+import { getEmailCategories, type EmailCategory as Category } from "@/lib/api/emailCategories"
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -150,7 +150,7 @@ export function EnrichedEmailList() {
   React.useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const userCategories = await getCategories();
+        const userCategories = await getEmailCategories();
         setCategories(userCategories);
       } catch (error) {
         console.error('Error fetching categories:', error);
