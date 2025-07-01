@@ -13,12 +13,12 @@ export function middleware(request: NextRequest) {
     }
   }
 
-  // If we have appUserId and we're on the home page or login/register pages, redirect to emailList
+  // If we have appUserId and we're on the home page or login/register pages, redirect to dashboard
   if ((request.nextUrl.pathname === '/' || 
        request.nextUrl.pathname === '/login' || 
        request.nextUrl.pathname === '/register') && 
       appUserId) {
-    return NextResponse.redirect(new URL('/emailList', request.url))
+    return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
   return NextResponse.next()
