@@ -6,7 +6,6 @@ import * as z from 'zod'
 import { useRouter } from 'next/navigation'
 import axios, { AxiosError } from 'axios'
 import { toast } from 'sonner'
-import Cookies from 'js-cookie'
 import { getApiUrl } from '@/lib/api'
 import { useState } from 'react'
 import { Eye, EyeOff, Mail, Lock, User, ArrowRight, Sparkles, CheckCircle } from 'lucide-react'
@@ -69,16 +68,6 @@ export default function RegisterPage() {
       localStorage.setItem('token', res.data.token)
       localStorage.setItem('appUserId', res.data.appUserId)
       localStorage.setItem('userEmail', values.email)
-      Cookies.set('token', res.data.token, { 
-        path: '/', 
-        sameSite: 'none',
-        secure: true
-      })
-      Cookies.set('appUserId', res.data.appUserId, { 
-        path: '/', 
-        sameSite: 'none',
-        secure: true
-      })
       
       // Load categories after successful authentication
       await loadCategories()
@@ -86,7 +75,7 @@ export default function RegisterPage() {
       toast.dismiss()
       toast.success('Account created successfully!')
       
-      window.location.href = '/dashboard'
+      window.location.href = '/emailList'
     } catch (err) {
       toast.dismiss()
       const error = err as AxiosError<{ error: string }>
