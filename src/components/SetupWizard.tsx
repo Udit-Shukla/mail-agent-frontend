@@ -2,9 +2,10 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { SiGmail } from 'react-icons/si'
 import { PiMicrosoftOutlookLogoDuotone } from 'react-icons/pi'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { CategoryModal } from "@/components/CategoryModal"
 import { toast } from "sonner"
+import { useRouter } from 'next/navigation'
 
 interface SetupWizardProps {
   onAddAccount: () => void;
@@ -13,6 +14,7 @@ interface SetupWizardProps {
 
 export function SetupWizard({ onAddAccount, onSkip }: SetupWizardProps) {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false)
+  const router = useRouter()
 
   const handleAddAccount = () => {
     // Show category modal after account connection
@@ -30,6 +32,25 @@ export function SetupWizard({ onAddAccount, onSkip }: SetupWizardProps) {
       toast.error('Failed to save categories')
     }
   }
+
+  // Add message event listener for auth callbacks
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      // Verify the origin of the message
+      if (event.origin !== window.location.origin) return;
+
+      if (event.data.type === 'AUTH_SUCCESS') {
+        toast.success(`Successfully connected ${event.data.email}`);
+        // Redirect to emailList page
+        router.push('/emailList');
+      } else if (event.data.type === 'AUTH_ERROR') {
+        toast.error(event.data.error);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [router]);
 
   return (
     <div className="flex h-screen w-full items-center justify-center bg-background p-4">

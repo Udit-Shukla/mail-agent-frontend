@@ -78,9 +78,7 @@ export default function ProfilePage() {
     const top = window.screenY + (window.outerHeight - height) / 2
 
     // Create the OAuth URL with callback
-    const apiUrl = process.env.NODE_ENV === 'production'
-      ? (process.env.NEXT_PUBLIC_API_URL || 'https://mails.worxstream.io')
-      : '/api';
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
     const callbackUrl = `${window.location.origin}/auth/callback`
     const authUrl = `${apiUrl}/auth/outlook/login?appUserId=${appUserId}&callbackUrl=${encodeURIComponent(callbackUrl)}`
 
@@ -126,6 +124,36 @@ export default function ProfilePage() {
       }
     }, 500)
   };
+
+  // Add message event listener for auth callbacks
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      // Verify the origin of the message
+      if (event.origin !== window.location.origin) return;
+
+      if (event.data.type === 'AUTH_SUCCESS') {
+        toast.success(`Successfully connected ${event.data.email}`);
+        // Refresh profile data
+        try {
+          const [profileData, emailAccountsData] = await Promise.all([
+            getUserProfile(),
+            getUserEmailAccounts()
+          ]);
+          setProfile(profileData);
+          setEmailAccounts(emailAccountsData);
+        } catch (error) {
+          console.error('Error refreshing data:', error);
+        }
+        // Redirect to emailList page
+        router.push('/emailList');
+      } else if (event.data.type === 'AUTH_ERROR') {
+        toast.error(event.data.error);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [router]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {

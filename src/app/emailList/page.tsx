@@ -103,9 +103,7 @@ export default function DashboardPage() {
       setIsLoading(true)
 
       try {
-        const apiBase = process.env.NODE_ENV === 'production'
-          ? (process.env.NEXT_PUBLIC_API_URL || 'https://mails.worxstream.io')
-          : '/api';
+        const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
         const res = await fetch(`${apiBase}/account/accounts?appUserId=${appUserId}`)
         if (!res.ok) throw new Error(`API returned ${res.status}`)
         const data = await res.json()
@@ -782,6 +780,25 @@ export default function DashboardPage() {
       toast.error('Failed to update categories')
     }
   }
+
+  // Add message event listener for auth callbacks
+  useEffect(() => {
+    const handleMessage = async (event: MessageEvent) => {
+      // Verify the origin of the message
+      if (event.origin !== window.location.origin) return;
+
+      if (event.data.type === 'AUTH_SUCCESS') {
+        toast.success(`Successfully connected ${event.data.email}`);
+        // Refresh accounts list
+        await fetchLinkedAccounts(false);
+      } else if (event.data.type === 'AUTH_ERROR') {
+        toast.error(event.data.error);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [fetchLinkedAccounts]);
 
   // Show setup wizard only after categories are saved
   if (showSetupWizard) {

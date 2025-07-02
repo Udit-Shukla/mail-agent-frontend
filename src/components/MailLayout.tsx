@@ -235,13 +235,8 @@ export function MailLayout({ children }: MailLayoutProps) {
         toast.success(`Successfully connected ${event.data.email}`);
         // Refresh accounts list
         await fetchLinkedAccounts();
-        // Show category modal
-        try {
-          setIsCategoryModalOpen(true);
-        } catch (error) {
-          console.error('Error showing category modal:', error);
-          toast.error('Failed to show category modal');
-        }
+        // Redirect to emailList page
+        router.push('/emailList');
       } else if (event.data.type === 'AUTH_ERROR') {
         toast.error(event.data.error);
       }
@@ -249,7 +244,7 @@ export function MailLayout({ children }: MailLayoutProps) {
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [fetchLinkedAccounts]);
+  }, [fetchLinkedAccounts, router]);
 
   React.useEffect(() => {
     fetchLinkedAccounts();

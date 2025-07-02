@@ -1,9 +1,6 @@
 import axios from 'axios';
 
-const isProduction = process.env.NODE_ENV === 'production';
-const API_URL = isProduction
-  ? (process.env.NEXT_PUBLIC_API_URL || 'https://mails.worxstream.io')
-  : '/api';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export interface EmailStats {
   total: number;
