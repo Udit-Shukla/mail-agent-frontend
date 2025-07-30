@@ -430,6 +430,7 @@ export default function ProfilePage() {
                             <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
                               <li>Remove the account from your profile</li>
                               <li>Delete all emails associated with this account from the database</li>
+                              <li>Delete all categories configured for this account</li>
                               <li>This action cannot be undone</li>
                             </ul>
                           </div>

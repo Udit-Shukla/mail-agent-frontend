@@ -220,16 +220,16 @@ export default function DashboardPage() {
       toast.success('Mailbox sync completed');
     };
 
-    const handleMarkedRead = (messageId: string) => {
+    const handleMarkedRead = (data: { messageId: string }) => {
       // Update message in current folder if it exists
       if (currentFolder) {
-        mailCache.updateMessage(activeAccount.email, currentFolder, messageId, { read: true });
-        setMessages(prev => prev.map(m => m.id === messageId ? { ...m, read: true } : m));
+        mailCache.updateMessage(activeAccount.email, currentFolder, data.messageId, { read: true });
+        setMessages(prev => prev.map(m => m.id === data.messageId ? { ...m, read: true } : m));
       }
       
       // Update folder unread count for the folder containing this message
       setFolders(prev => prev.map(folder => {
-        const messageInFolder = messages.find(m => m.id === messageId && m.folder === folder.id);
+        const messageInFolder = messages.find(m => m.id === data.messageId && m.folder === folder.id);
         if (messageInFolder && folder.unreadItemCount > 0) {
           return { ...folder, unreadItemCount: folder.unreadItemCount - 1 };
         }
