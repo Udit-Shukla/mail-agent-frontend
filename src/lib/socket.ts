@@ -48,7 +48,7 @@ type SocketEventHandlers = {
   'mail:sent': (result: { success: boolean; error?: string }) => void;
   'mail:replied': (result: { messageId: string; success: boolean }) => void;
   'mail:repliedAll': (result: { messageId: string; success: boolean }) => void;
-  'mail:markedRead': (messageId: string) => void;
+  'mail:markedRead': (data: { messageId: string }) => void;
   'mail:importantMarked': (data: { messageId: string; flag: boolean }) => void;
   'mail:error': (error: string) => void;
   'mail:promptDateRange': () => void;
@@ -219,9 +219,9 @@ export const initializeSocket = (appUserId: string, email?: string): Socket => {
       eventHandlers['mail:repliedAll']?.(result);
     });
 
-    socket.on('mail:markedRead', (messageId: string) => {
-      console.log('✓ Marked as read:', messageId);
-      eventHandlers['mail:markedRead']?.(messageId);
+    socket.on('mail:markedRead', (data: { messageId: string }) => {
+      console.log('✓ Marked as read:', data.messageId);
+      eventHandlers['mail:markedRead']?.(data);
     });
 
     socket.on('mail:importantMarked', (data: { messageId: string; flag: boolean }) => {
